@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="service.nexttrack" name="Next Track" version="2.0.0+matrix.1" provider-name="im85288">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.python.script" library="resources/lib/script_entry.py">
+      <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.service" library="resources/lib/service_entry.py"/>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Next Track</summary>
+        <description lang="en_GB">A music-focused service addon that shows a notification overlay for the next track in your playlist or music addon. Automatically continues playback to the next song.</description>
+        <platform>all</platform>
+        <license>GPL-2.0-only</license>
+        <news>
+v2.0.0 (2026-02-24)
+- Full rename from "Up Next - Music" to "Next Track"
+- Purged all video/TV/episode terminology
+- Music-only addon: tracks, artists, albums
+- New notification signal: nexttrack_data / NEXTTRACKPLAYEDSIGNAL
+- Renamed all skin XML files to script-nexttrack-*
+        </news>
+        <assets>
+            <icon>resources/media/icon.png</icon>
+            <fanart>resources/media/fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon>
