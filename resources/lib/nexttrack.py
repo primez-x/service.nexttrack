@@ -3,47 +3,54 @@
 
 from __future__ import absolute_import, division, unicode_literals
 from datetime import datetime, timedelta
-from platform import machine
-from xbmc import Player
-from xbmcgui import WindowXMLDialog
 from statichelper import from_unicode
-from utils import localize_time
+from utils import localize_time, set_property, clear_property
 
-ACTION_PLAYER_STOP = 13
-ACTION_NAV_BACK = 92
-OS_MACHINE = machine()
+PROP_PREFIX = 'NextTrack.'
 
 
-class NextTrack(WindowXMLDialog):
-    item = None
-    cancel = False
-    progress_step_size = 0
-    current_progress_percent = 100
+class NextTrack:
+    """Non-blocking next-track overlay driven by Home window properties.
 
-    def __init__(self, *args, **kwargs):
-        self.action_exitkeys_id = [10, 13]
-        self.progress_control = None
-        if OS_MACHINE[0:5] == 'armv7':
-            WindowXMLDialog.__init__(self)
-        else:
-            WindowXMLDialog.__init__(self, *args, **kwargs)
+    Instead of opening a modal dialog, this sets properties on window 10000
+    that the skin reads to render a non-blocking widget.
+    """
 
-    def onInit(self):  # pylint: disable=invalid-name
-        self.set_info()
-        self.prepare_progress_control()
+    def __init__(self):
+        self.item = None
+        self.cancel = False
+        self.progress_step_size = 0
+        self.current_progress_percent = 100
 
-    def set_info(self):
-        """Populate window properties from the provided track item."""
+    def set_item(self, item):
+        self.item = item
+
+    def set_progress_step_size(self, progress_step_size):
+        self.progress_step_size = progress_step_size
+
+    def show(self):
+        """Publish track info as Home window properties for the skin to display."""
+        self._set_info()
+        set_property('service.nexttrack.dialog', 'true')
+
+    def close(self):
+        """Clear all properties so the skin hides the widget."""
+        clear_property('service.nexttrack.dialog')
+        for key in ('title', 'artist', 'album', 'thumb', 'fanart', 'landscape',
+                     'clearart', 'clearlogo', 'poster', 'year', 'rating',
+                     'playcount', 'runtime', 'remaining', 'endtime'):
+            clear_property(PROP_PREFIX + key)
+
+    def _set_info(self):
         item = self.item or {}
 
         art = item.get('art', {}) or {}
-
-        self.setProperty('fanart', art.get('fanart', ''))
-        self.setProperty('landscape', art.get('landscape', ''))
-        self.setProperty('clearart', art.get('clearart', ''))
-        self.setProperty('clearlogo', art.get('clearlogo', ''))
-        self.setProperty('poster', art.get('poster', ''))
-        self.setProperty('thumb', art.get('thumb', ''))
+        set_property(PROP_PREFIX + 'fanart', art.get('fanart', ''))
+        set_property(PROP_PREFIX + 'landscape', art.get('landscape', ''))
+        set_property(PROP_PREFIX + 'clearart', art.get('clearart', ''))
+        set_property(PROP_PREFIX + 'clearlogo', art.get('clearlogo', ''))
+        set_property(PROP_PREFIX + 'poster', art.get('poster', ''))
+        set_property(PROP_PREFIX + 'thumb', art.get('thumb', ''))
 
         title = item.get('title', '')
         artist = item.get('artist', '')
@@ -51,12 +58,12 @@ class NextTrack(WindowXMLDialog):
             artist = ', '.join(artist)
         album = item.get('album', '')
 
-        self.setProperty('artist', artist)
-        self.setProperty('album', album)
-        self.setProperty('title', title)
+        set_property(PROP_PREFIX + 'artist', artist)
+        set_property(PROP_PREFIX + 'album', album)
+        set_property(PROP_PREFIX + 'title', title)
 
         year = item.get('year') or ''
-        self.setProperty('year', from_unicode(str(year)))
+        set_property(PROP_PREFIX + 'year', from_unicode(str(year)))
 
         rating_val = item.get('rating')
         if rating_val is None:
@@ -66,64 +73,22 @@ class NextTrack(WindowXMLDialog):
                 rating = str(round(float(rating_val), 1))
             except (TypeError, ValueError):
                 rating = from_unicode('%s' % rating_val)
-        self.setProperty('rating', rating)
+        set_property(PROP_PREFIX + 'rating', rating)
 
-        self.setProperty('playcount', from_unicode(str(item.get('playcount', 0))))
+        set_property(PROP_PREFIX + 'playcount', from_unicode(str(item.get('playcount', 0))))
 
         runtime = item.get('runtime') or item.get('duration') or 0
-        self.setProperty('runtime', from_unicode(str(runtime)))
-
-    def prepare_progress_control(self):
-        try:
-            self.progress_control = self.getControl(3014)
-        except RuntimeError:
-            pass
-        else:
-            self.progress_control.setPercent(self.current_progress_percent)  # pylint: disable=no-member,useless-suppression
-
-    def set_item(self, item):
-        self.item = item
-
-    def set_progress_step_size(self, progress_step_size):
-        self.progress_step_size = progress_step_size
+        set_property(PROP_PREFIX + 'runtime', from_unicode(str(runtime)))
 
     def update_progress_control(self, remaining=None, runtime=None):
         self.current_progress_percent = self.current_progress_percent - self.progress_step_size
-        try:
-            self.progress_control = self.getControl(3014)
-        except RuntimeError:
-            pass
-        else:
-            self.progress_control.setPercent(self.current_progress_percent)  # pylint: disable=no-member,useless-suppression
-
         if remaining:
-            self.setProperty('remaining', from_unicode('%02d' % remaining))
+            set_property(PROP_PREFIX + 'remaining', from_unicode('%02d' % remaining))
         if runtime:
-            self.setProperty('endtime', from_unicode(localize_time(datetime.now() + timedelta(seconds=runtime))))
+            set_property(PROP_PREFIX + 'endtime', from_unicode(localize_time(datetime.now() + timedelta(seconds=runtime))))
 
     def set_cancel(self, cancel):
         self.cancel = cancel
 
     def is_cancel(self):
         return self.cancel
-
-    def onFocus(self, controlId):  # pylint: disable=invalid-name,unused-argument
-        pass
-
-    def doAction(self):  # pylint: disable=invalid-name
-        pass
-
-    def closeDialog(self):  # pylint: disable=invalid-name
-        self.close()
-
-    def onClick(self, controlId):  # pylint: disable=invalid-name
-        if controlId == 3013:
-            self.set_cancel(True)
-            self.close()
-
-    def onAction(self, action):  # pylint: disable=invalid-name
-        if action == ACTION_PLAYER_STOP:
-            self.close()
-        elif action == ACTION_NAV_BACK:
-            self.set_cancel(True)
-            self.close()

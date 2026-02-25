@@ -29,10 +29,6 @@ msgctxt "#30010"
 msgid "Continue listening"
 msgstr ""
 
-msgctxt "#30032"
-msgid "Enable on playlists"
-msgstr ""
-
 msgctxt "#30034"
 msgid "Close"
 msgstr ""
@@ -47,14 +43,6 @@ msgstr ""
 
 msgctxt "#30037"
 msgid "Next item in [COLOR FFFF4081]$INFO[Window.Property(remaining)][/COLOR] seconds"
-msgstr ""
-
-msgctxt "#30038"
-msgid "Simple"
-msgstr ""
-
-msgctxt "#30039"
-msgid "Fancy"
 msgstr ""
 
 msgctxt "#30040"
@@ -87,18 +75,6 @@ msgstr ""
 
 
 ### SETTINGS
-msgctxt "#30500"
-msgid "Interface"
-msgstr ""
-
-msgctxt "#30501"
-msgid "Features"
-msgstr ""
-
-msgctxt "#30503"
-msgid "Set the display mode for the notifications"
-msgstr ""
-
 msgctxt "#30600"
 msgid "Behaviour"
 msgstr ""
@@ -111,9 +87,6 @@ msgctxt "#30603"
 msgid "Default action when nothing selected"
 msgstr ""
 
-msgctxt "#30605"
-msgid "Include already played items"
-msgstr ""
 
 msgctxt "#30609"
 msgid "Duration in seconds for notification to be shown"
@@ -148,9 +121,5 @@ msgid "Enable DEMO mode"
 msgstr ""
 
 msgctxt "#30805"
-msgid "Show a Next Track pop-up..."
-msgstr ""
-
-msgctxt "#30807"
-msgid "Show a Next Track Simple pop-up..."
+msgid "Show a Next Track test widget..."
 msgstr ""

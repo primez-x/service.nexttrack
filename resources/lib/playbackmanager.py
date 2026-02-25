@@ -9,7 +9,7 @@ from player import NextTrackPlayer
 from playitem import PlayItem
 from state import State
 from nexttrack import NextTrack
-from utils import addon_path, calculate_progress_steps, clear_property, event, get_setting_bool, get_setting_int, log as ulog, set_property
+from utils import calculate_progress_steps, event, get_setting_bool, log as ulog
 
 
 class PlaybackManager:
@@ -39,12 +39,7 @@ class PlaybackManager:
             self.demo.hide()
 
     def launch_next_track(self):
-        enable_playlist = get_setting_bool('enablePlaylist')
         track, source = self.play_item.get_next()
-        self.log('Playlist setting: %s' % enable_playlist)
-        if source == 'playlist' and not enable_playlist:
-            self.log('Playlist integration disabled', 2)
-            return
         if not track:
             self.log('Error: no track could be found to play next...exiting', 1)
             return
@@ -62,22 +57,16 @@ class PlaybackManager:
 
     def launch_popup(self, track, source=None):
         track_id = track.get('trackid')
-        no_play_count = track.get('playcount') is None or track.get('playcount') == 0
-        include_play_count = True if self.state.include_played else no_play_count
-        if not include_play_count or self.state.current_track_id == track_id:
+        if self.state.current_track_id == track_id:
             return False, True
 
         if source != 'playlist':
             self.state.queued = self.api.queue_next_item(track)
 
-        if get_setting_int('simpleMode') == 0:
-            next_track_page = NextTrack('script-nexttrack-nexttrack-simple.xml', addon_path(), 'default', '1080i')
-        else:
-            next_track_page = NextTrack('script-nexttrack-nexttrack.xml', addon_path(), 'default', '1080i')
+        next_track_widget = NextTrack()
 
-        showing = self.show_popup_and_wait(track, next_track_page)
-        next_track_page.close()
-        clear_property('service.nexttrack.dialog')
+        showing = self.show_popup_and_wait(track, next_track_widget)
+        next_track_widget.close()
 
         if not self.state.track:
             self.log('exit launch_popup early due to disabled tracking', 2)
@@ -96,8 +85,8 @@ class PlaybackManager:
 
         return True, True
 
-    def show_popup_and_wait(self, track, next_track_page):
-        """Show informational overlay until track ends or time runs out."""
+    def show_popup_and_wait(self, track, next_track_widget):
+        """Show non-blocking overlay until track ends or time runs out."""
         try:
             play_time = self.player.getTime()
             total_time = self.player.getTotalTime()
@@ -105,23 +94,22 @@ class PlaybackManager:
             self.log('exit early because player is no longer running', 2)
             return False
         progress_step_size = calculate_progress_steps(total_time - play_time)
-        next_track_page.set_item(track)
-        next_track_page.set_progress_step_size(progress_step_size)
-        next_track_page.show()
-        set_property('service.nexttrack.dialog', 'true')
+        next_track_widget.set_item(track)
+        next_track_widget.set_progress_step_size(progress_step_size)
+        next_track_widget.show()
 
         while self.player.isPlaying() and (total_time - play_time > 1):
             try:
                 play_time = self.player.getTime()
                 total_time = self.player.getTotalTime()
             except RuntimeError:
-                next_track_page.close()
+                next_track_widget.close()
                 return True
 
             remaining = total_time - play_time
             runtime = track.get('runtime') or track.get('duration')
             if not self.state.pause:
-                next_track_page.update_progress_control(remaining=remaining, runtime=runtime)
+                next_track_widget.update_progress_control(remaining=remaining, runtime=runtime)
             sleep(100)
 
         return True
