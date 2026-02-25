@@ -31,6 +31,7 @@ class NextTrack:
     def show(self):
         """Publish track info as Home window properties for the skin to display."""
         self._set_info()
+        set_property(PROP_PREFIX + 'progress', '100')
         set_property('service.nexttrack.dialog', 'true')
 
     def close(self):
@@ -38,7 +39,7 @@ class NextTrack:
         clear_property('service.nexttrack.dialog')
         for key in ('title', 'artist', 'album', 'thumb', 'fanart', 'landscape',
                      'clearart', 'clearlogo', 'poster', 'year', 'rating',
-                     'playcount', 'runtime', 'remaining', 'endtime'):
+                     'playcount', 'runtime', 'remaining', 'endtime', 'progress'):
             clear_property(PROP_PREFIX + key)
 
     def _set_info(self):
@@ -81,7 +82,8 @@ class NextTrack:
         set_property(PROP_PREFIX + 'runtime', from_unicode(str(runtime)))
 
     def update_progress_control(self, remaining=None, runtime=None):
-        self.current_progress_percent = self.current_progress_percent - self.progress_step_size
+        self.current_progress_percent = max(0, self.current_progress_percent - self.progress_step_size)
+        set_property(PROP_PREFIX + 'progress', str(int(self.current_progress_percent)))
         if remaining:
             set_property(PROP_PREFIX + 'remaining', from_unicode('%02d' % remaining))
         if runtime:
