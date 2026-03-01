@@ -110,6 +110,6 @@ class PlaybackManager:
             runtime = track.get('runtime') or track.get('duration')
             if not self.state.pause:
                 next_track_widget.update_progress_control(remaining=remaining, runtime=runtime)
-            sleep(100)
+            sleep(500)
 
         return True

@@ -32,13 +32,13 @@ def test_popup(_window_arg=None):
     nt.show()
 
     step = 0
-    wait_s = 0.1
-    timeout_steps = 100  # 10 seconds
+    wait_s = 0.5
+    timeout_steps = 20  # 10 seconds at 500 ms
     monitor = Monitor()
     remaining = 10
     while step < timeout_steps and not monitor.abortRequested():
         monitor.waitForAbort(wait_s)
-        remaining = max(0, 10 - step // 10)
+        remaining = max(0, 10 - step // 2)
         nt.update_progress_control(remaining=remaining, runtime=remaining)
         step += 1
 

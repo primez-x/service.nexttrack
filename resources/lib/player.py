@@ -40,7 +40,7 @@ class NextTrackPlayer(Player):
 
     def _check_music(self):
         """Enable tracking only when music (songs) are playing."""
-        self.monitor.waitForAbort(5)
+        self.monitor.waitForAbort(1)
         if not getCondVisibility('musicplayer.content(songs)'):
             return
         self.state.track = True
@@ -65,17 +65,20 @@ class NextTrackPlayer(Player):
         """Called when user stops playing a file."""
         self.reset_queue()
         self.api.reset_addon_data()
-        self.state = State()
+        Api.clear_caches()
+        self.state.reset()
 
     def onPlayBackEnded(self):  # pylint: disable=invalid-name
         """Called when Kodi has ended playing a file."""
         self.reset_queue()
         if not self.state.playing_next:
             self.api.reset_addon_data()
-            self.state = State()
+            Api.clear_caches()
+            self.state.reset()
 
     def onPlayBackError(self):  # pylint: disable=invalid-name
         """Called when playback stops due to an error."""
         self.reset_queue()
         self.api.reset_addon_data()
-        self.state = State()
+        Api.clear_caches()
+        self.state.reset()

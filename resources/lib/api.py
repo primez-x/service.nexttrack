@@ -9,6 +9,8 @@ from utils import event, get_int, get_setting_bool, get_setting_int, jsonrpc, lo
 class Api:
     """API class for Next Track playlist and player operations."""
     _shared_state = {}
+    _playerid_cache = None
+    _playlistid_cache = None
 
     PLAYER_PLAYLIST = {
         'video': PLAYLIST_VIDEO,  # 1
@@ -29,15 +31,21 @@ class Api:
     def reset_addon_data(self):
         self.data = {}
 
+    @staticmethod
+    def clear_caches():
+        """Invalidate player/playlist ID caches (call when playback stops/ends/errors)."""
+        Api._playerid_cache = None
+        Api._playlistid_cache = None
+
     def addon_data_received(self, data, encoding='base64'):
         self.log('addon_data_received called with data %s' % data, 2)
         self.data = data
         self.encoding = encoding
 
     @staticmethod
-    def _get_playerid(playerid_cache=[None]):  # pylint: disable=dangerous-default-value
-        if playerid_cache[0] is not None:
-            return playerid_cache[0]
+    def _get_playerid():
+        if Api._playerid_cache is not None:
+            return Api._playerid_cache
 
         result = jsonrpc(method='Player.GetActivePlayers')
         result = [
@@ -50,26 +58,30 @@ class Api:
         if playerid == -1:
             return None
 
-        playerid_cache[0] = playerid
+        Api._playerid_cache = playerid
         return playerid
 
     @staticmethod
-    def get_playlistid(playlistid_cache=[None]):  # pylint: disable=dangerous-default-value
-        if playlistid_cache[0] is not None:
-            return playlistid_cache[0]
+    def get_playlistid():
+        if Api._playlistid_cache is not None:
+            return Api._playlistid_cache
+
+        playerid = Api._get_playerid()
+        if playerid is None:
+            return Api.PLAYER_PLAYLIST['audio']
 
         result = jsonrpc(
             method='Player.GetProperties',
             params={
-                'playerid': Api._get_playerid(playerid_cache=[None]),
+                'playerid': playerid,
                 'properties': ['playlistid'],
             }
         )
-        result = get_int(
+        playlistid = get_int(
             result.get('result', {}), 'playlistid', Api.PLAYER_PLAYLIST['audio']
         )
-
-        return result
+        Api._playlistid_cache = playlistid
+        return playlistid
 
     def queue_next_item(self, track):
         next_item = {}

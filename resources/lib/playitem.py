@@ -22,7 +22,7 @@ class PlayItem:
         ulog(msg, name=self.__class__.__name__, level=level)
 
     def get_playlist_position(self):
-        playlist = PlayList(self.api.get_playlistid(playlistid_cache=[None]))
+        playlist = PlayList(self.api.get_playlistid())
         position = playlist.getposition()
         if playlist.size() > 1 and position < (playlist.size() - 1):
             return position + 1

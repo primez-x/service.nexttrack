@@ -10,6 +10,7 @@ from xbmcgui import Window
 from statichelper import from_unicode, to_unicode
 
 ADDON = Addon()
+HOME_WINDOW = Window(10000)
 
 
 def get_addon_info(key):
@@ -34,17 +35,23 @@ def get_kodi_version():
 
 
 def get_property(key, window_id=10000):
-    """Get a Window property"""
+    """Get a Window property (uses shared Home window when window_id is 10000)."""
+    if window_id == 10000:
+        return to_unicode(HOME_WINDOW.getProperty(key))
     return to_unicode(Window(window_id).getProperty(key))
 
 
 def set_property(key, value, window_id=10000):
-    """Set a Window property"""
+    """Set a Window property (uses shared Home window when window_id is 10000)."""
+    if window_id == 10000:
+        return HOME_WINDOW.setProperty(key, from_unicode(str(value)))
     return Window(window_id).setProperty(key, from_unicode(str(value)))
 
 
 def clear_property(key, window_id=10000):
-    """Clear a Window property"""
+    """Clear a Window property (uses shared Home window when window_id is 10000)."""
+    if window_id == 10000:
+        return HOME_WINDOW.clearProperty(key)
     return Window(window_id).clearProperty(key)
 
 
@@ -158,19 +165,19 @@ def event(message, data=None, sender=None, encoding='base64'):
 
 
 def log(msg, name=None, level=1):
-    """Log information to the Kodi log"""
+    """Log information to the Kodi log. Short-circuits by level to avoid costly calls when filtered."""
     log_level = get_setting_int('logLevel', level)
+    if log_level < level:
+        return
     debug_logging = get_global_setting('debug.showloginfo')
     set_property('logLevel', log_level)
-    if not debug_logging and log_level < level:
-        return
     if debug_logging:
-        level = LOGDEBUG
+        kodi_level = LOGDEBUG
     elif get_kodi_version() >= 19:
-        level = LOGINFO
+        kodi_level = LOGINFO
     else:
-        level = LOGINFO + 1
-    xlog('[%s] %s -> %s' % (addon_id(), name, from_unicode(msg)), level=level)
+        kodi_level = LOGINFO + 1
+    xlog('[%s] %s -> %s' % (get_addon_info('id'), name, from_unicode(msg)), level=kodi_level)
 
 
 def calculate_progress_steps(period):

@@ -21,6 +21,8 @@ class NextTrack:
         self.cancel = False
         self.progress_step_size = 0
         self.current_progress_percent = 100
+        self._last_remaining = None
+        self._last_endtime = None
 
     def set_item(self, item):
         self.item = item
@@ -84,10 +86,14 @@ class NextTrack:
     def update_progress_control(self, remaining=None, runtime=None):
         self.current_progress_percent = max(0, self.current_progress_percent - self.progress_step_size)
         set_property(PROP_PREFIX + 'progress', str(int(self.current_progress_percent)))
-        if remaining:
+        if remaining is not None and remaining != self._last_remaining:
+            self._last_remaining = remaining
             set_property(PROP_PREFIX + 'remaining', from_unicode('%02d' % remaining))
-        if runtime:
-            set_property(PROP_PREFIX + 'endtime', from_unicode(localize_time(datetime.now() + timedelta(seconds=runtime))))
+        if runtime is not None:
+            endtime_str = from_unicode(localize_time(datetime.now() + timedelta(seconds=runtime)))
+            if endtime_str != self._last_endtime:
+                self._last_endtime = endtime_str
+                set_property(PROP_PREFIX + 'endtime', endtime_str)
 
     def set_cancel(self, cancel):
         self.cancel = cancel
