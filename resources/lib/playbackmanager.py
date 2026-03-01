@@ -87,16 +87,22 @@ class PlaybackManager:
 
     def show_popup_and_wait(self, track, next_track_widget):
         """Show non-blocking overlay until track ends or time runs out."""
+        UPDATE_INTERVAL_MS = 100
         try:
             play_time = self.player.getTime()
             total_time = self.player.getTotalTime()
         except RuntimeError:
             self.log('exit early because player is no longer running', 2)
             return False
-        progress_step_size = calculate_progress_steps(total_time - play_time)
+        period_sec = total_time - play_time
+        progress_step_size = calculate_progress_steps(
+            period_sec, update_interval_sec=UPDATE_INTERVAL_MS / 1000.0
+        )
         next_track_widget.set_item(track)
         next_track_widget.set_progress_step_size(progress_step_size)
         next_track_widget.show()
+
+        initial_total_time = total_time
 
         while self.player.isPlaying() and (total_time - play_time > 1):
             try:
@@ -107,9 +113,11 @@ class PlaybackManager:
                 return True
 
             remaining = total_time - play_time
+            if abs(total_time - initial_total_time) > initial_total_time * 0.1:
+                break
             runtime = track.get('runtime') or track.get('duration')
             if not self.state.pause:
                 next_track_widget.update_progress_control(remaining=remaining, runtime=runtime)
-            sleep(500)
+            sleep(UPDATE_INTERVAL_MS)
 
         return True

@@ -180,11 +180,13 @@ def log(msg, name=None, level=1):
     xlog('[%s] %s -> %s' % (get_addon_info('id'), name, from_unicode(msg)), level=kodi_level)
 
 
-def calculate_progress_steps(period):
-    """Calculate a progress step"""
-    if int(period) == 0:  # Avoid division by zero
+def calculate_progress_steps(period, update_interval_sec=0.5):
+    """Calculate progress percent to subtract per tick so the bar drains over period seconds.
+    update_interval_sec is the sleep interval between ticks (e.g. 0.5 for 500ms)."""
+    period = int(period)
+    if period == 0:
         return 10.0
-    return (100.0 / int(period)) / 10
+    return (100.0 * update_interval_sec) / period
 
 
 def jsonrpc(**kwargs):
