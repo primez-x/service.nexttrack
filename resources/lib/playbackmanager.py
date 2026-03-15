@@ -103,6 +103,7 @@ class PlaybackManager:
         next_track_widget.show()
 
         initial_total_time = total_time
+        notification_threshold = self.api.notification_time(total_time=total_time)
 
         while self.player.isPlaying() and (total_time - play_time > 1):
             try:
@@ -113,6 +114,10 @@ class PlaybackManager:
                 return True
 
             remaining = total_time - play_time
+            # User rewound out of the notification zone: hide overlay so we don't show "130 sec until next track"
+            if remaining > notification_threshold:
+                next_track_widget.close()
+                return True
             if abs(total_time - initial_total_time) > initial_total_time * 0.1:
                 break
             runtime = track.get('runtime') or track.get('duration')
