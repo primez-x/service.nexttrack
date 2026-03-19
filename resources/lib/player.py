@@ -2,7 +2,7 @@
 # GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
 
 from __future__ import absolute_import, division, unicode_literals
-from xbmc import getCondVisibility, Player, Monitor
+from xbmc import Player, Monitor
 from api import Api
 from state import State
 
@@ -39,9 +39,9 @@ class NextTrackPlayer(Player):
             self.state.queued = False
 
     def _check_music(self):
-        """Enable tracking only when music (songs) are playing."""
+        """Enable tracking when any audio is playing."""
         self.monitor.waitForAbort(1)
-        if not getCondVisibility('musicplayer.content(songs)'):
+        if not self.isPlayingAudio():
             return
         self.state.track = True
         self.reset_queue()
