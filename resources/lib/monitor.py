@@ -35,18 +35,11 @@ class NextTrackMonitor(Monitor):
 
             if bool(get_property('PseudoTVRunning') == 'True'):
                 self.player.disable_tracking()
-                self.playback_manager.demo.hide()
-                continue
-
-            if get_setting_bool('disableNextTrack'):
-                self.player.disable_tracking()
-                self.playback_manager.demo.hide()
                 continue
 
             if kodi_version_major() >= 18 and self.player.isExternalPlayer():
                 self.log('Next Track tracking stopped, external player detected', 2)
                 self.player.disable_tracking()
-                self.playback_manager.demo.hide()
                 continue
 
             last_file = self.player.get_last_file()
@@ -55,7 +48,6 @@ class NextTrackMonitor(Monitor):
             except RuntimeError:
                 self.log('Next Track tracking stopped, failed player.getPlayingFile()', 2)
                 self.player.disable_tracking()
-                self.playback_manager.demo.hide()
                 continue
 
             if (current_file.startswith((
@@ -64,7 +56,6 @@ class NextTrackMonitor(Monitor):
                         '.bdmv', '.iso', '.ifo'))):
                 self.log('Next Track tracking stopped, Blu-ray/DVD/CD playing', 2)
                 self.player.disable_tracking()
-                self.playback_manager.demo.hide()
                 continue
 
             if last_file and last_file == current_file:
@@ -75,13 +66,11 @@ class NextTrackMonitor(Monitor):
             except RuntimeError:
                 self.log('Next Track tracking stopped, failed player.getTotalTime()', 2)
                 self.player.disable_tracking()
-                self.playback_manager.demo.hide()
                 continue
 
             if total_time == 0:
                 self.log('Next Track tracking stopped, no file is playing', 2)
                 self.player.disable_tracking()
-                self.playback_manager.demo.hide()
                 continue
 
             try:
@@ -89,7 +78,6 @@ class NextTrackMonitor(Monitor):
             except RuntimeError:
                 self.log('Next Track tracking stopped, failed player.getTime()', 2)
                 self.player.disable_tracking()
-                self.playback_manager.demo.hide()
                 continue
 
             notification_time = self.api.notification_time(total_time=total_time)
@@ -114,7 +102,6 @@ class NextTrackMonitor(Monitor):
             self.log('Received data from sender %s is not JSON: %s' % (sender, data), 2)
             return
 
-        self.playback_manager.handle_demo()
         decoded_data.update(id='%s_play_action' % sender.replace('.SIGNAL', ''))
         self.api.addon_data_received(decoded_data, encoding=encoding)
         self.player.enable_tracking()

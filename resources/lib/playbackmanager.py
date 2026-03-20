@@ -4,12 +4,11 @@
 from __future__ import absolute_import, division, unicode_literals
 from xbmc import sleep
 from api import Api
-from demo import DemoOverlay
 from player import NextTrackPlayer
 from playitem import PlayItem
 from state import State
 from nexttrack import NextTrack
-from utils import calculate_progress_steps, event, get_setting_bool, log as ulog
+from utils import calculate_progress_steps, event, log as ulog
 
 
 class PlaybackManager:
@@ -21,22 +20,9 @@ class PlaybackManager:
         self.play_item = PlayItem()
         self.state = State()
         self.player = NextTrackPlayer()
-        self.demo = DemoOverlay(12005)
 
     def log(self, msg, level=2):
         ulog(msg, name=self.__class__.__name__, level=level)
-
-    def handle_demo(self):
-        if get_setting_bool('enableDemoMode'):
-            self.log('Next Track DEMO mode enabled, skipping automatically to the end', 0)
-            self.demo.show()
-            try:
-                total_time = self.player.getTotalTime()
-                self.player.seekTime(total_time - 15)
-            except RuntimeError as exc:
-                self.log('Failed to seekTime(): %s' % exc, 0)
-        else:
-            self.demo.hide()
 
     def launch_next_track(self):
         track, source = self.play_item.get_next()

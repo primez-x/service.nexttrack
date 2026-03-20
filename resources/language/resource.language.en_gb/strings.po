@@ -38,7 +38,7 @@ msgid "Continue listening in [COLOR FFFF4081]$INFO[Window.Property(remaining)][/
 msgstr ""
 
 msgctxt "#30036"
-msgid "Next track in [COLOR FFFF4081]$INFO[Window.Property(remaining)][/COLOR] seconds"
+msgid "Next track in [COLOR FF1DB954]$INFO[Window.Property(remaining)][/COLOR] seconds"
 msgstr ""
 
 msgctxt "#30037"
@@ -65,18 +65,9 @@ msgctxt "#30049"
 msgid "Next track"
 msgstr ""
 
-msgctxt "#30060"
-msgid "[B]NEXT TRACK DEMO MODE ENABLED[/B]"
-msgstr ""
-
-msgctxt "#30061"
-msgid "[I]Tracks automatically skip to end.[/I]"
-msgstr ""
-
-
 ### SETTINGS
 msgctxt "#30600"
-msgid "Behaviour"
+msgid "Settings"
 msgstr ""
 
 msgctxt "#30601"
@@ -89,19 +80,15 @@ msgstr ""
 
 
 msgctxt "#30609"
-msgid "Duration in seconds for notification to be shown"
+msgid "Countdown duration in seconds before track end"
 msgstr ""
 
 msgctxt "#30625"
-msgid "Preview duration (seconds before track end)"
+msgid "Notification duration"
 msgstr ""
 
 msgctxt "#30700"
 msgid "Expert"
-msgstr ""
-
-msgctxt "#30703"
-msgid "Disable Next Track"
 msgstr ""
 
 msgctxt "#30705"
@@ -114,10 +101,6 @@ msgstr ""
 
 msgctxt "#30801"
 msgid "Test how the user interface looks"
-msgstr ""
-
-msgctxt "#30803"
-msgid "Enable DEMO mode"
 msgstr ""
 
 msgctxt "#30805"
