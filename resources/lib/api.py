@@ -3,7 +3,7 @@
 
 from __future__ import absolute_import, division, unicode_literals
 from xbmc import sleep, PLAYLIST_VIDEO, PLAYLIST_MUSIC
-from utils import event, get_int, get_setting_bool, get_setting_int, jsonrpc, log as ulog
+from utils import event, get_int, get_property, get_setting_bool, get_setting_int, jsonrpc, log as ulog
 
 
 class Api:
@@ -144,10 +144,63 @@ class Api:
         if not item.get('title'):
             item['title'] = item.get('label', '')
 
+        self._merge_spotify_hook_properties(item)
+        self._normalise_art(item)
+
         item['trackid'] = get_int(item, 'id')
 
         self.log('Next item in playlist: %s' % item, 2)
         return item
+
+    @staticmethod
+    def _merge_spotify_hook_properties(item):
+        """Use SpotifyKodiConnect's skin hook properties when JSON-RPC is sparse."""
+        item_file = item.get('file') or ''
+        spotify_file = get_property('Spotify.NextTrackFile')
+        if spotify_file and item_file and spotify_file != item_file:
+            return
+
+        if not item.get('title') and get_property('Spotify.NextTrackTitle'):
+            item['title'] = get_property('Spotify.NextTrackTitle')
+        if not item.get('label') and get_property('Spotify.NextTrackTitle'):
+            item['label'] = get_property('Spotify.NextTrackTitle')
+        if not item.get('artist') and get_property('Spotify.NextTrackArtist'):
+            item['artist'] = get_property('Spotify.NextTrackArtist')
+        if not item.get('album') and get_property('Spotify.NextTrackAlbum'):
+            item['album'] = get_property('Spotify.NextTrackAlbum')
+        if not item.get('duration') and get_property('Spotify.NextTrackDuration'):
+            item['duration'] = get_int(get_property('Spotify.NextTrackDuration'), default=0)
+
+        art = item.get('art') or {}
+        if not isinstance(art, dict):
+            art = {}
+        hook_art = {
+            'thumb': get_property('Spotify.NextTrackThumb'),
+            'poster': get_property('Spotify.NextTrackThumb'),
+            'icon': get_property('Spotify.NextTrackThumb'),
+            'fanart': get_property('Spotify.NextTrackFanart'),
+            'landscape': get_property('Spotify.NextTrackFanart') or get_property('Spotify.NextTrackThumb'),
+        }
+        for key, value in hook_art.items():
+            if value and not art.get(key):
+                art[key] = value
+        item['art'] = art
+
+    @staticmethod
+    def _normalise_art(item):
+        art = item.get('art') or {}
+        if not isinstance(art, dict):
+            art = {}
+        fallback = ''
+        for key in ('thumb', 'poster', 'icon', 'fanart', 'landscape'):
+            if art.get(key):
+                fallback = art.get(key)
+                break
+        if fallback:
+            for key in ('thumb', 'poster', 'icon', 'fanart', 'landscape'):
+                if not art.get(key):
+                    art[key] = fallback
+        item['art'] = art
 
     def play_addon_item(self):
         if self.data.get('play_url'):
