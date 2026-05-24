@@ -50,6 +50,7 @@ class PlaybackManager:
             self.state.queued = self.api.queue_next_item(track)
 
         next_track_widget = NextTrack()
+        next_track_widget.set_source(source)
 
         showing = self.show_popup_and_wait(track, next_track_widget)
         next_track_widget.close()
