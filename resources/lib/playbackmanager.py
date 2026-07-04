@@ -33,7 +33,7 @@ class PlaybackManager:
         play_next, keep_playing = self.launch_popup(track, source)
         self.state.playing_next = play_next
 
-        if not play_next and self.state.queued:
+        if source != 'playlist' and not play_next and self.state.queued:
             self.state.queued = self.api.dequeue_next_item()
         if not keep_playing:
             self.log('Stopping playback', 2)
@@ -52,27 +52,34 @@ class PlaybackManager:
         next_track_widget = NextTrack()
         next_track_widget.set_source(source)
 
-        showing = self.show_popup_and_wait(track, next_track_widget)
+        countdown_completed, keep_playing = self.show_popup_and_wait(
+            track, next_track_widget, source
+        )
         next_track_widget.close()
+
+        if not countdown_completed:
+            return False, keep_playing
 
         if not self.state.track:
             self.log('exit launch_popup early due to disabled tracking', 2)
-            return False, showing
+            return False, keep_playing
+
+        if source == 'playlist':
+            self.log('playlist source: overlay only, letting Kodi auto-advance', 2)
+            return False, True
 
         self.log('playing next track', 2)
         if self.state.current_track_id is not None:
             event(message='NEXTTRACKPLAYEDSIGNAL', data={'trackid': self.state.current_track_id}, encoding='base64')
 
-        if source == 'playlist':
-            self.log('playlist source: letting Kodi auto-advance', 2)
-        elif self.api.has_addon_data():
+        if self.api.has_addon_data():
             self.api.play_addon_item()
         elif self.state.queued:
             self.player.playnext()
 
         return True, True
 
-    def show_popup_and_wait(self, track, next_track_widget):
+    def show_popup_and_wait(self, track, next_track_widget, source=None):
         """Show non-blocking overlay until track ends or time runs out."""
         UPDATE_INTERVAL_MS = 100
         try:
@@ -80,7 +87,12 @@ class PlaybackManager:
             total_time = self.player.getTotalTime()
         except RuntimeError:
             self.log('exit early because player is no longer running', 2)
-            return False
+            return False, False
+
+        playback_snapshot = self._playback_snapshot(source)
+        if playback_snapshot is None:
+            return False, False
+
         period_sec = total_time - play_time
         progress_step_size = calculate_progress_steps(
             period_sec, update_interval_sec=UPDATE_INTERVAL_MS / 1000.0
@@ -98,18 +110,63 @@ class PlaybackManager:
                 total_time = self.player.getTotalTime()
             except RuntimeError:
                 next_track_widget.close()
-                return True
+                return False, True
+
+            if self._playback_snapshot_changed(playback_snapshot, source):
+                next_track_widget.close()
+                return False, True
 
             remaining = total_time - play_time
             # User rewound out of the notification zone: hide overlay so we don't show "130 sec until next track"
             if remaining > notification_threshold:
                 next_track_widget.close()
-                return True
+                return False, True
             if abs(total_time - initial_total_time) > initial_total_time * 0.1:
-                break
+                next_track_widget.close()
+                return False, True
             runtime = track.get('runtime') or track.get('duration')
             if not self.state.pause:
                 next_track_widget.update_progress_control(remaining=remaining, runtime=runtime)
             sleep(UPDATE_INTERVAL_MS)
 
-        return True
+        return True, True
+
+    def _playback_snapshot(self, source):
+        try:
+            player_file = self.player.getPlayingFile()
+        except RuntimeError:
+            self.log('exit early because player file is no longer available', 2)
+            return None
+
+        playlist_position = None
+        if source == 'playlist':
+            playlist_position = self.play_item.get_playlist_position()
+
+        return {
+            'file': player_file,
+            'playlist_position': playlist_position,
+            'current_track_id': self.state.current_track_id,
+        }
+
+    def _playback_snapshot_changed(self, snapshot, source):
+        try:
+            player_file = self.player.getPlayingFile()
+        except RuntimeError:
+            self.log('closing overlay because player file is no longer available', 2)
+            return True
+
+        if player_file != snapshot.get('file'):
+            self.log('closing overlay because player file changed', 2)
+            return True
+
+        if source == 'playlist':
+            playlist_position = self.play_item.get_playlist_position()
+            if playlist_position != snapshot.get('playlist_position'):
+                self.log('closing overlay because playlist position changed', 2)
+                return True
+
+        if self.state.current_track_id != snapshot.get('current_track_id'):
+            self.log('closing overlay because active track changed', 2)
+            return True
+
+        return False
