@@ -4,12 +4,11 @@
 from __future__ import absolute_import, division, unicode_literals
 from xbmc import sleep
 from api import Api
-from demo import DemoOverlay
 from player import NextTrackPlayer
 from playitem import PlayItem
 from state import State
 from nexttrack import NextTrack
-from utils import calculate_progress_steps, event, get_setting_bool, log as ulog
+from utils import calculate_progress_steps, event, log as ulog
 
 
 class PlaybackManager:
@@ -21,22 +20,9 @@ class PlaybackManager:
         self.play_item = PlayItem()
         self.state = State()
         self.player = NextTrackPlayer()
-        self.demo = DemoOverlay(12005)
 
     def log(self, msg, level=2):
         ulog(msg, name=self.__class__.__name__, level=level)
-
-    def handle_demo(self):
-        if get_setting_bool('enableDemoMode'):
-            self.log('Next Track DEMO mode enabled, skipping automatically to the end', 0)
-            self.demo.show()
-            try:
-                total_time = self.player.getTotalTime()
-                self.player.seekTime(total_time - 15)
-            except RuntimeError as exc:
-                self.log('Failed to seekTime(): %s' % exc, 0)
-        else:
-            self.demo.hide()
 
     def launch_next_track(self):
         track, source = self.play_item.get_next()
@@ -87,16 +73,23 @@ class PlaybackManager:
 
     def show_popup_and_wait(self, track, next_track_widget):
         """Show non-blocking overlay until track ends or time runs out."""
+        UPDATE_INTERVAL_MS = 100
         try:
             play_time = self.player.getTime()
             total_time = self.player.getTotalTime()
         except RuntimeError:
             self.log('exit early because player is no longer running', 2)
             return False
-        progress_step_size = calculate_progress_steps(total_time - play_time)
+        period_sec = total_time - play_time
+        progress_step_size = calculate_progress_steps(
+            period_sec, update_interval_sec=UPDATE_INTERVAL_MS / 1000.0
+        )
         next_track_widget.set_item(track)
         next_track_widget.set_progress_step_size(progress_step_size)
         next_track_widget.show()
+
+        initial_total_time = total_time
+        notification_threshold = self.api.notification_time(total_time=total_time)
 
         while self.player.isPlaying() and (total_time - play_time > 1):
             try:
@@ -107,9 +100,15 @@ class PlaybackManager:
                 return True
 
             remaining = total_time - play_time
+            # User rewound out of the notification zone: hide overlay so we don't show "130 sec until next track"
+            if remaining > notification_threshold:
+                next_track_widget.close()
+                return True
+            if abs(total_time - initial_total_time) > initial_total_time * 0.1:
+                break
             runtime = track.get('runtime') or track.get('duration')
             if not self.state.pause:
                 next_track_widget.update_progress_control(remaining=remaining, runtime=runtime)
-            sleep(100)
+            sleep(UPDATE_INTERVAL_MS)
 
         return True

@@ -15,3 +15,12 @@ class State:
         self.pause = False
         self.queued = False
         self.playing_next = False
+
+    def reset(self):
+        """Reset all state (call when playback stops/ends/errors)."""
+        self.current_track_id = None
+        self.last_file = None
+        self.track = False
+        self.pause = False
+        self.queued = False
+        self.playing_next = False
