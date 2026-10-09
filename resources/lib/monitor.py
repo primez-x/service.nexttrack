@@ -5,17 +5,18 @@ from __future__ import absolute_import, division, unicode_literals
 from traceback import format_exc
 from xbmc import Monitor
 from api import Api
-from playbackmanager import PlaybackManager
-from player import NextTrackPlayer
+from nexttrack import clear_properties
+from playbackmanager import POPUP_ABORTED, PlaybackManager
+from player import get_player
 from statichelper import to_unicode
-from utils import clear_property, decode_json, get_property, get_setting_bool, kodi_version_major, log as ulog
+from utils import decode_json, get_property, get_setting_bool, kodi_version_major, log as ulog
 
 
 class NextTrackMonitor(Monitor):
     """Service monitor for Next Track."""
 
     def __init__(self):
-        self.player = NextTrackPlayer()
+        self.player = get_player()
         self.api = Api()
         self.playback_manager = PlaybackManager()
         Monitor.__init__(self)
@@ -44,7 +45,7 @@ class NextTrackMonitor(Monitor):
     def _reset_after_error(self):
         """Best-effort cleanup after an unexpected error in the service loop."""
         for cleanup in (self.player.disable_tracking,
-                        lambda: clear_property('service.nexttrack.dialog'),
+                        clear_properties,
                         self.player.reset_queue,
                         self.api.reset_addon_data):
             try:
@@ -110,7 +111,12 @@ class NextTrackMonitor(Monitor):
 
         self.player.set_last_file(current_file)
         self.log('Show notification as track (length %d secs) ends in %d secs' % (total_time, notification_time), 2)
-        self.playback_manager.launch_next_track()
+        result = self.playback_manager.launch_next_track()
+        if result == POPUP_ABORTED:
+            # Popup closed because the user sought back out of the trigger
+            # zone: forget this file so the overlay re-arms for it.
+            self.player.set_last_file(None)
+            return
         self.log('Next Track autoplay succeeded', 2)
         self.player.disable_tracking()
 

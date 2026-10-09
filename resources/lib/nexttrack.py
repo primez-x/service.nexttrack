@@ -12,101 +12,82 @@ from utils import addon_path, localize_time, set_property, clear_property
 
 PROP_PREFIX = 'NextTrack.'
 
-# Map numeric action IDs to Kodi action names for executebuiltin
-ACTION_ID_TO_NAME = {
-    1: 'Left',
-    2: 'Right',
-    3: 'Up',
-    4: 'Down',
-    5: 'PageUp',
-    6: 'PageDown',
-    7: 'Select',
-    9: 'ParentDir',
-    10: 'PreviousMenu',
-    11: 'TakeScreenshot',
-    12: 'Pause',
-    13: 'Stop',
-    14: 'SkipPrevious',
-    15: 'SkipNext',
-    16: 'FullScreen',
-    17: 'AspectRatio',
-    18: 'StepBack',
-    19: 'StepForward',
-    20: 'BigStepBack',
-    21: 'BigStepForward',
-    22: 'OSD',
-    23: 'ShowSubtitles',
-    24: 'PlayPause',
-    25: 'Decrease',
-    26: 'Increase',
-    27: 'Info',
-    28: 'NextPicture',
-    29: 'PreviousPicture',
-    30: 'CycleCaption',
-    31: 'Language',
-    32: 'VolumePlus',
-    33: 'VolumeMinus',
-    34: 'VolumeAmplify',
-    35: 'VolumeAmplifyRelease',
-    36: 'Mute',
-    37: 'CycleResolution',
-    38: 'CycleAudioChannel',
-    39: 'VerticalShift',
-    40: 'VerticalShiftUp',
-    41: 'VerticalShiftDown',
-    42: 'NextSubtitleStream',
-    43: 'PreviousSubtitleStream',
-    44: 'OpenSubtitles',
-    45: 'Backspace',
-    46: 'Tab',
-    47: 'Return',
-    48: 'CapsLock',
-    49: 'Escape',
-    50: 'Space',
-    51: 'Home',
-    52: 'End',
-    53: 'Insert',
-    54: 'Delete',
-    55: 'Menu',
-    56: 'ContextMenu',
-    57: 'Number0',
-    58: 'Number1',
-    59: 'Number2',
-    60: 'Number3',
-    61: 'Number4',
-    62: 'Number5',
-    63: 'Number6',
-    64: 'Number7',
-    65: 'Number8',
-    66: 'Number9',
-    67: 'F1',
-    68: 'F2',
-    69: 'F3',
-    70: 'F4',
-    71: 'F5',
-    72: 'F6',
-    73: 'F7',
-    74: 'F8',
-    75: 'F9',
-    76: 'F10',
-    77: 'F11',
-    78: 'F12',
-    79: 'Play',
-    80: 'PlayPause',
-    81: 'Record',
-    82: 'Print',
-    83: 'PrintScreen',
-    84: 'Delete',
-    85: 'Rewind',
-    86: 'Forward',
-    87: 'VolumeUp',
-    88: 'VolumeUp',
-    89: 'VolumeDown',
-    90: 'ChannelUp',
-    91: 'Mute',
-    92: 'Back',
-    107: 'Left',  # Sometimes mapped to this
-}
+# Home window properties published for skins (Window(Home).Property(NextTrack.*))
+PROPERTY_KEYS = ('IsVisible', 'Available', 'title', 'artist', 'album', 'thumb',
+                 'fanart', 'landscape', 'clearart', 'clearlogo', 'poster', 'year',
+                 'rating', 'playcount', 'runtime', 'remaining', 'endtime',
+                 'progress', 'file', 'label', 'source', 'trackid')
+DIALOG_PROPERTY = 'service.nexttrack.dialog'
+
+# Kodi action IDs (xbmcgui.ACTION_* / Kodi's ActionIDs.h) and the action names
+# Kodi's ActionTranslator accepts in Action(<name>,<window>).  Numeric
+# fallbacks are used when xbmcgui does not expose a constant.
+# ACTION_FORWARD (16) and ACTION_REWIND (17) have no translator name and
+# mouse actions (100+) cannot be replayed via Action(), so they are omitted.
+_ACTION_NAMES = (
+    ('ACTION_MOVE_LEFT', 1, 'Left'),
+    ('ACTION_MOVE_RIGHT', 2, 'Right'),
+    ('ACTION_MOVE_UP', 3, 'Up'),
+    ('ACTION_MOVE_DOWN', 4, 'Down'),
+    ('ACTION_PAGE_UP', 5, 'PageUp'),
+    ('ACTION_PAGE_DOWN', 6, 'PageDown'),
+    ('ACTION_SELECT_ITEM', 7, 'Select'),
+    ('ACTION_HIGHLIGHT_ITEM', 8, 'Highlight'),
+    ('ACTION_PARENT_DIR', 9, 'ParentFolder'),
+    ('ACTION_PREVIOUS_MENU', 10, 'PreviousMenu'),
+    ('ACTION_SHOW_INFO', 11, 'Info'),
+    ('ACTION_PAUSE', 12, 'Pause'),
+    ('ACTION_STOP', 13, 'Stop'),
+    ('ACTION_NEXT_ITEM', 14, 'SkipNext'),
+    ('ACTION_PREV_ITEM', 15, 'SkipPrevious'),
+    ('ACTION_SHOW_GUI', 18, 'FullScreen'),
+    ('ACTION_ASPECT_RATIO', 19, 'AspectRatio'),
+    ('ACTION_STEP_FORWARD', 20, 'StepForward'),
+    ('ACTION_STEP_BACK', 21, 'StepBack'),
+    ('ACTION_BIG_STEP_FORWARD', 22, 'BigStepForward'),
+    ('ACTION_BIG_STEP_BACK', 23, 'BigStepBack'),
+    ('ACTION_SHOW_OSD', 24, 'OSD'),
+    ('ACTION_SHOW_SUBTITLES', 25, 'ShowSubtitles'),
+    ('ACTION_NEXT_SUBTITLE', 26, 'NextSubtitle'),
+    ('ACTION_NEXT_PICTURE', 28, 'NextPicture'),
+    ('ACTION_PREV_PICTURE', 29, 'PreviousPicture'),
+    ('ACTION_SHOW_PLAYLIST', 33, 'Playlist'),
+    ('REMOTE_0', 58, 'Number0'),
+    ('REMOTE_1', 59, 'Number1'),
+    ('REMOTE_2', 60, 'Number2'),
+    ('REMOTE_3', 61, 'Number3'),
+    ('REMOTE_4', 62, 'Number4'),
+    ('REMOTE_5', 63, 'Number5'),
+    ('REMOTE_6', 64, 'Number6'),
+    ('REMOTE_7', 65, 'Number7'),
+    ('REMOTE_8', 66, 'Number8'),
+    ('REMOTE_9', 67, 'Number9'),
+    ('ACTION_PLAYER_FORWARD', 77, 'FastForward'),
+    ('ACTION_PLAYER_REWIND', 78, 'Rewind'),
+    ('ACTION_PLAYER_PLAY', 79, 'Play'),
+    ('ACTION_TAKE_SCREENSHOT', 85, 'Screenshot'),
+    ('ACTION_VOLUME_UP', 88, 'VolumeUp'),
+    ('ACTION_VOLUME_DOWN', 89, 'VolumeDown'),
+    ('ACTION_MUTE', 91, 'Mute'),
+    ('ACTION_NAV_BACK', 92, 'Back'),
+    ('ACTION_CHAPTER_OR_BIG_STEP_FORWARD', 97, 'ChapterOrBigStepForward'),
+    ('ACTION_CHAPTER_OR_BIG_STEP_BACK', 98, 'ChapterOrBigStepBack'),
+    ('ACTION_CONTEXT_MENU', 117, 'ContextMenu'),
+    ('ACTION_SHOW_OSD_TIME', 123, 'ShowTime'),
+    ('ACTION_ENTER', 135, 'Enter'),
+    ('ACTION_PLAYER_PLAYPAUSE', 229, 'PlayPause'),
+)
+
+ACTION_ID_TO_NAME = dict(
+    (getattr(xbmcgui, const, fallback), name) for const, fallback, name in _ACTION_NAMES
+)
+
+
+def clear_properties():
+    """Clear every Next Track Home window property so no skin overlay lingers."""
+    clear_property(DIALOG_PROPERTY)
+    for key in PROPERTY_KEYS:
+        clear_property(PROP_PREFIX + key)
 
 
 def _join_artist(value):
@@ -161,7 +142,7 @@ class NextTrackDialog(xbmcgui.WindowXMLDialog):
     def onAction(self, action):
         """Forward input to the underlying window so this overlay stays passive."""
         action_id = action.getId()
-        xbmc.log('[nexttrack] onAction: id=%d' % action_id, xbmc.LOGINFO)
+        xbmc.log('[nexttrack] onAction: id=%d' % action_id, xbmc.LOGDEBUG)
         if action_id in (xbmcgui.ACTION_NAV_BACK, xbmcgui.ACTION_PREVIOUS_MENU):
             action_name = ACTION_ID_TO_NAME.get(action_id)
             target_window_id = self._underlying_dialog_id or self._underlying_window_id
@@ -222,7 +203,7 @@ class NextTrack:
         self._set_info()
         set_property(PROP_PREFIX + 'progress', '100')
         set_property(PROP_PREFIX + 'IsVisible', 'true')
-        set_property('service.nexttrack.dialog', 'true')
+        set_property(DIALOG_PROPERTY, 'true')
 
         # Open the standalone dialog for skins that don't provide their own overlay
         if not self._skin_has_nexttrack_support():
@@ -246,16 +227,12 @@ class NextTrack:
 
     def close(self):
         """Clear all properties and close the overlay."""
-        if self._dialog:
-            self._dialog.close()
-            self._dialog = None
-        clear_property('service.nexttrack.dialog')
-        clear_property(PROP_PREFIX + 'IsVisible')
-        for key in ('title', 'artist', 'album', 'thumb', 'fanart', 'landscape',
-                    'clearart', 'clearlogo', 'poster', 'year', 'rating',
-                    'playcount', 'runtime', 'remaining', 'endtime', 'progress',
-                    'file', 'label', 'source', 'trackid', 'Available'):
-            clear_property(PROP_PREFIX + key)
+        dialog, self._dialog = self._dialog, None
+        try:
+            if dialog:
+                dialog.close()
+        finally:
+            clear_properties()
 
     def _set_info(self):
         item = self.item or {}

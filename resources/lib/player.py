@@ -82,3 +82,18 @@ class NextTrackPlayer(Player):
         self.api.reset_addon_data()
         Api.clear_caches()
         self.state.reset()
+
+
+_PLAYER = None
+
+
+def get_player():
+    """Return the service-wide NextTrackPlayer instance.
+
+    Kodi delivers every player callback to every xbmc.Player instance, so all
+    modules must share one instance to handle each event exactly once.
+    """
+    global _PLAYER  # pylint: disable=global-statement
+    if _PLAYER is None:
+        _PLAYER = NextTrackPlayer()
+    return _PLAYER

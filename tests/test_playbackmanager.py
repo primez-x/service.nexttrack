@@ -314,12 +314,11 @@ class PlaybackManagerTests(unittest.TestCase):
         )
         manager = make_manager(self.playbackmanager, api, player, state)
 
-        play_next, keep_playing = manager.launch_popup(
+        result = manager.launch_popup(
             {"trackid": 2, "duration": 180}, source="library"
         )
 
-        self.assertIs(play_next, False)
-        self.assertIs(keep_playing, True)
+        self.assertEqual(result, self.playbackmanager.POPUP_ABORTED)
         self.assertEqual(player.playnext_calls, 0)
         self.assertGreaterEqual(self.widgets.instances[-1].close_calls, 1)
 
@@ -334,12 +333,11 @@ class PlaybackManagerTests(unittest.TestCase):
         )
         manager = make_manager(self.playbackmanager, api, player, state)
 
-        play_next, keep_playing = manager.launch_popup(
+        result = manager.launch_popup(
             {"trackid": 3, "duration": 180}, source="library"
         )
 
-        self.assertIs(play_next, False)
-        self.assertIs(keep_playing, True)
+        self.assertEqual(result, self.playbackmanager.POPUP_CLOSED)
         self.assertEqual(player.playnext_calls, 0)
 
     def test_active_track_change_during_countdown_aborts_provider_play_action(self):
@@ -356,12 +354,11 @@ class PlaybackManagerTests(unittest.TestCase):
         )
         manager = make_manager(self.playbackmanager, api, player, state)
 
-        play_next, keep_playing = manager.launch_popup(
+        result = manager.launch_popup(
             {"trackid": "next", "duration": 180}, source="addon"
         )
 
-        self.assertIs(play_next, False)
-        self.assertIs(keep_playing, True)
+        self.assertEqual(result, self.playbackmanager.POPUP_CLOSED)
         self.assertEqual(api.play_addon_calls, 0)
 
     def test_playlist_position_change_during_countdown_stays_passive(self):
@@ -407,10 +404,9 @@ class PlaybackManagerTests(unittest.TestCase):
         )
         manager = make_manager(self.playbackmanager, api, player, state)
 
-        play_next, keep_playing = manager.launch_popup(track, source="playlist")
+        result = manager.launch_popup(track, source="playlist")
 
-        self.assertIs(play_next, False)
-        self.assertIs(keep_playing, True)
+        self.assertEqual(result, self.playbackmanager.POPUP_DONE)
         self.assertEqual(api.queue_calls, [])
         self.assertEqual(api.dequeue_calls, 0)
         self.assertEqual(api.play_addon_calls, 0)
@@ -428,12 +424,70 @@ class PlaybackManagerTests(unittest.TestCase):
         )
         manager = make_manager(self.playbackmanager, api, player, state)
 
-        play_next, keep_playing = manager.launch_popup(track, source="library")
+        result = manager.launch_popup(track, source="library")
 
-        self.assertIs(play_next, True)
-        self.assertIs(keep_playing, True)
+        self.assertEqual(result, self.playbackmanager.POPUP_PLAYED)
         self.assertEqual(api.queue_calls, [track])
         self.assertEqual(player.playnext_calls, 1)
+
+    def test_rewind_out_of_trigger_zone_keeps_queue_and_addon_data_for_rearm(self):
+        track = {"trackid": 7, "duration": 180}
+        state = FakeState()
+        api = FakeApi(has_addon_data=False, notification_time=15, queue_result=True)
+        player = FakePlayer(
+            times=[85, 70],
+            totals=[100, 100],
+            playing=[True],
+            files=["library-track.mp3", "library-track.mp3"],
+        )
+        play_item = FakePlayItem(track, "library")
+        manager = make_manager(
+            self.playbackmanager, api, player, state, play_item=play_item
+        )
+
+        result = manager.launch_next_track()
+
+        self.assertEqual(result, self.playbackmanager.POPUP_ABORTED)
+        self.assertEqual(api.queue_calls, [track])
+        self.assertEqual(api.dequeue_calls, 0)
+        self.assertEqual(api.reset_calls, 0)
+        self.assertIs(state.queued, True)
+        self.assertEqual(player.stop_calls, 0)
+
+        # Re-armed popup for the same track must not queue the item twice.
+        player._times = [90, 99]
+        player._playing = [True, False]
+        result = manager.launch_next_track()
+
+        self.assertEqual(result, self.playbackmanager.POPUP_PLAYED)
+        self.assertEqual(api.queue_calls, [track])
+        self.assertEqual(player.playnext_calls, 1)
+
+    def test_countdown_error_still_closes_widget(self):
+        state = FakeState()
+        api = FakeApi(has_addon_data=False, notification_time=15, queue_result=True)
+        player = FakePlayer(
+            times=[90, 95],
+            totals=[100, 100],
+            playing=[True],
+            files=["library-track.mp3", "library-track.mp3"],
+        )
+        manager = make_manager(self.playbackmanager, api, player, state)
+
+        def explode(**_kwargs):
+            raise ValueError("boom")
+
+        original_init = self.widgets.__init__
+
+        def init(widget):
+            original_init(widget)
+            widget.update_progress_control = explode
+
+        self.widgets.__init__ = init
+        with self.assertRaises(ValueError):
+            manager.launch_popup({"trackid": 8, "duration": 180}, source="library")
+
+        self.assertEqual(self.widgets.instances[-1].close_calls, 1)
 
 
 class MonitorResilienceTests(unittest.TestCase):
@@ -490,6 +544,211 @@ class MonitorResilienceTests(unittest.TestCase):
         self.assertEqual(events.count("disable"), 2)
         self.assertEqual(events.count("reset_queue"), 2)
         self.assertEqual(events.count("reset_data"), 2)
+
+
+    def test_unexpected_error_clears_nexttrack_window_properties(self):
+        utils = importlib.import_module("utils")
+        nexttrack = importlib.import_module("nexttrack")
+        for key in nexttrack.PROPERTY_KEYS:
+            utils.set_property(nexttrack.PROP_PREFIX + key, "stale")
+        utils.set_property(nexttrack.DIALOG_PROPERTY, "true")
+        ticks = iter([False, True])
+        service = self.monitor.NextTrackMonitor.__new__(self.monitor.NextTrackMonitor)
+
+        class Player(object):
+            def disable_tracking(self):
+                pass
+
+            def reset_queue(self):
+                pass
+
+        class Api(object):
+            def reset_addon_data(self):
+                pass
+
+        def boom():
+            raise ValueError("boom")
+
+        service.player = Player()
+        service.api = Api()
+        service.abortRequested = lambda: False
+        service.waitForAbort = lambda _timeout: next(ticks)
+        service._check_playback = boom
+
+        service.run()
+
+        for key in nexttrack.PROPERTY_KEYS:
+            self.assertEqual(utils.get_property(nexttrack.PROP_PREFIX + key), "")
+        self.assertEqual(utils.get_property(nexttrack.DIALOG_PROPERTY), "")
+
+    def _service_in_trigger_zone(self, popup_result):
+        service = self.monitor.NextTrackMonitor.__new__(self.monitor.NextTrackMonitor)
+
+        class Player(object):
+            def __init__(self):
+                self.last_file = None
+                self.tracking = True
+                self.last_file_history = []
+
+            def is_tracking(self):
+                return self.tracking
+
+            def disable_tracking(self):
+                self.tracking = False
+
+            def isExternalPlayer(self):
+                return False
+
+            def get_last_file(self):
+                return self.last_file
+
+            def set_last_file(self, filename):
+                self.last_file = filename
+                self.last_file_history.append(filename)
+
+            def getPlayingFile(self):
+                return "song.mp3"
+
+            def getTotalTime(self):
+                return 200
+
+            def getTime(self):
+                return 190
+
+        class Api(object):
+            def notification_time(self, total_time=None):
+                return 15
+
+        class Manager(object):
+            calls = 0
+
+            def launch_next_track(self):
+                Manager.calls += 1
+                return popup_result
+
+        service.player = Player()
+        service.api = Api()
+        service.playback_manager = Manager()
+        return service
+
+    def test_aborted_popup_rearms_tracking_for_same_file(self):
+        service = self._service_in_trigger_zone(
+            importlib.import_module("playbackmanager").POPUP_ABORTED
+        )
+
+        service._check_playback()
+
+        self.assertIs(service.player.tracking, True)
+        self.assertEqual(service.player.last_file_history, ["song.mp3", None])
+        service._check_playback()
+        self.assertEqual(service.playback_manager.calls, 2)
+
+    def test_completed_popup_stops_tracking_for_file(self):
+        service = self._service_in_trigger_zone(
+            importlib.import_module("playbackmanager").POPUP_PLAYED
+        )
+
+        service._check_playback()
+
+        self.assertIs(service.player.tracking, False)
+        self.assertEqual(service.player.last_file, "song.mp3")
+
+    def test_service_shares_one_player_instance(self):
+        player_module = importlib.import_module("player")
+        created = []
+        original_init = player_module.NextTrackPlayer.__init__
+
+        def counting_init(instance):
+            created.append(instance)
+            original_init(instance)
+
+        player_module.NextTrackPlayer.__init__ = counting_init
+        try:
+            service = self.monitor.NextTrackMonitor()
+        finally:
+            player_module.NextTrackPlayer.__init__ = original_init
+
+        self.assertEqual(len(created), 1)
+        self.assertIs(service.playback_manager.player, service.player)
+        self.assertIs(service.playback_manager.play_item.player, service.player)
+
+
+class NextTrackDialogTests(unittest.TestCase):
+    def setUp(self):
+        self._module_names = KODI_MODULES + RUNTIME_MODULES
+        self._original_modules = {
+            name: sys.modules.get(name, MISSING) for name in self._module_names
+        }
+        for module_name in self._module_names:
+            sys.modules.pop(module_name, None)
+        self._original_path = list(sys.path)
+        sys.path.insert(0, str(LIB_DIR))
+        install_kodi_mocks()
+        self.xbmc = sys.modules["xbmc"]
+        self.builtins = []
+        self.logs = []
+        self.xbmc.executebuiltin = self.builtins.append
+        self.xbmc.log = lambda msg, level=None: self.logs.append(level)
+        self.nexttrack = importlib.import_module("nexttrack")
+
+    def tearDown(self):
+        for module_name in self._module_names:
+            original = self._original_modules[module_name]
+            if original is MISSING:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = original
+        sys.path[:] = self._original_path
+
+    def test_action_ids_match_kodi_action_names(self):
+        expected = {
+            1: "Left", 2: "Right", 3: "Up", 4: "Down", 7: "Select",
+            9: "ParentFolder", 10: "PreviousMenu", 11: "Info", 12: "Pause",
+            13: "Stop", 14: "SkipNext", 15: "SkipPrevious", 18: "FullScreen",
+            58: "Number0", 67: "Number9", 77: "FastForward", 78: "Rewind",
+            79: "Play", 85: "Screenshot", 88: "VolumeUp", 89: "VolumeDown",
+            91: "Mute", 92: "Back", 117: "ContextMenu", 229: "PlayPause",
+        }
+        for action_id, name in expected.items():
+            self.assertEqual(self.nexttrack.ACTION_ID_TO_NAME.get(action_id), name)
+        for unmapped in (16, 17, 107):
+            self.assertNotIn(unmapped, self.nexttrack.ACTION_ID_TO_NAME)
+
+    def test_on_action_forwards_by_name_and_logs_at_debug(self):
+        class Action(object):
+            def __init__(self, action_id):
+                self.action_id = action_id
+
+            def getId(self):
+                return self.action_id
+
+        dialog = self.nexttrack.NextTrackDialog("script-nexttrack-nexttrack.xml")
+        dialog.set_underlying_window_id(12006)
+
+        dialog.onAction(Action(11))
+        dialog.onAction(Action(14))
+
+        self.assertEqual(self.builtins, ["Action(Info,12006)", "Action(SkipNext,12006)"])
+        self.assertEqual(set(self.logs), {self.xbmc.LOGDEBUG})
+
+    def test_close_clears_properties_even_if_dialog_close_fails(self):
+        utils = importlib.import_module("utils")
+        widget = self.nexttrack.NextTrack()
+        widget.set_item({"title": "Song", "artist": "Artist"})
+        widget.show()
+        self.assertEqual(utils.get_property("NextTrack.IsVisible"), "true")
+
+        class BrokenDialog(object):
+            def close(self):
+                raise RuntimeError("dialog gone")
+
+        widget._dialog = BrokenDialog()
+        with self.assertRaises(RuntimeError):
+            widget.close()
+
+        for key in self.nexttrack.PROPERTY_KEYS:
+            self.assertEqual(utils.get_property("NextTrack." + key), "")
+        self.assertEqual(utils.get_property("service.nexttrack.dialog"), "")
 
 
 if __name__ == "__main__":
