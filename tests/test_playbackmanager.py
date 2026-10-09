@@ -11,6 +11,7 @@ from pathlib import Path
 LIB_DIR = Path(__file__).resolve().parents[1] / "resources" / "lib"
 RUNTIME_MODULES = (
     "api",
+    "monitor",
     "nexttrack",
     "playbackmanager",
     "player",
@@ -433,6 +434,62 @@ class PlaybackManagerTests(unittest.TestCase):
         self.assertIs(keep_playing, True)
         self.assertEqual(api.queue_calls, [track])
         self.assertEqual(player.playnext_calls, 1)
+
+
+class MonitorResilienceTests(unittest.TestCase):
+    def setUp(self):
+        self._module_names = KODI_MODULES + RUNTIME_MODULES
+        self._original_modules = {
+            name: sys.modules.get(name, MISSING) for name in self._module_names
+        }
+        for module_name in self._module_names:
+            sys.modules.pop(module_name, None)
+        self._original_path = list(sys.path)
+        sys.path.insert(0, str(LIB_DIR))
+        install_kodi_mocks()
+        self.monitor = importlib.import_module("monitor")
+
+    def tearDown(self):
+        for module_name in self._module_names:
+            original = self._original_modules[module_name]
+            if original is MISSING:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = original
+        sys.path[:] = self._original_path
+
+    def test_unexpected_error_is_logged_and_service_keeps_running(self):
+        events = []
+        ticks = iter([False, False, True])
+        service = self.monitor.NextTrackMonitor.__new__(self.monitor.NextTrackMonitor)
+
+        class Player(object):
+            def disable_tracking(self):
+                events.append("disable")
+
+            def reset_queue(self):
+                events.append("reset_queue")
+
+        class Api(object):
+            def reset_addon_data(self):
+                events.append("reset_data")
+
+        def boom():
+            events.append("check")
+            raise ValueError("boom")
+
+        service.player = Player()
+        service.api = Api()
+        service.abortRequested = lambda: False
+        service.waitForAbort = lambda _timeout: next(ticks)
+        service._check_playback = boom
+
+        service.run()
+
+        self.assertEqual(events.count("check"), 2)
+        self.assertEqual(events.count("disable"), 2)
+        self.assertEqual(events.count("reset_queue"), 2)
+        self.assertEqual(events.count("reset_data"), 2)
 
 
 if __name__ == "__main__":

@@ -2,12 +2,13 @@
 # GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
 
 from __future__ import absolute_import, division, unicode_literals
+from traceback import format_exc
 from xbmc import Monitor
 from api import Api
 from playbackmanager import PlaybackManager
 from player import NextTrackPlayer
 from statichelper import to_unicode
-from utils import decode_json, get_property, get_setting_bool, kodi_version_major, log as ulog
+from utils import clear_property, decode_json, get_property, get_setting_bool, kodi_version_major, log as ulog
 
 
 class NextTrackMonitor(Monitor):
@@ -22,7 +23,7 @@ class NextTrackMonitor(Monitor):
     def log(self, msg, level=1):
         ulog(msg, name=self.__class__.__name__, level=level)
 
-    def run(self):  # pylint: disable=too-many-branches
+    def run(self):
         """Main service loop."""
         self.log('Service started', 0)
 
@@ -30,67 +31,88 @@ class NextTrackMonitor(Monitor):
             if self.waitForAbort(1):
                 break
 
-            if not self.player.is_tracking():
-                continue
-
-            if bool(get_property('PseudoTVRunning') == 'True'):
-                self.player.disable_tracking()
-                continue
-
-            if kodi_version_major() >= 18 and self.player.isExternalPlayer():
-                self.log('Next Track tracking stopped, external player detected', 2)
-                self.player.disable_tracking()
-                continue
-
-            last_file = self.player.get_last_file()
             try:
-                current_file = to_unicode(self.player.getPlayingFile())
-            except RuntimeError:
-                self.log('Next Track tracking stopped, failed player.getPlayingFile()', 2)
-                self.player.disable_tracking()
-                continue
-
-            if (current_file.startswith((
-                    'bluray://', 'dvd://', 'udf://', 'iso9660://', 'cdda://'))
-                    or current_file.endswith((
-                        '.bdmv', '.iso', '.ifo'))):
-                self.log('Next Track tracking stopped, Blu-ray/DVD/CD playing', 2)
-                self.player.disable_tracking()
-                continue
-
-            if last_file and last_file == current_file:
-                continue
-
-            try:
-                total_time = self.player.getTotalTime()
-            except RuntimeError:
-                self.log('Next Track tracking stopped, failed player.getTotalTime()', 2)
-                self.player.disable_tracking()
-                continue
-
-            if total_time == 0:
-                self.log('Next Track tracking stopped, no file is playing', 2)
-                self.player.disable_tracking()
-                continue
-
-            try:
-                play_time = self.player.getTime()
-            except RuntimeError:
-                self.log('Next Track tracking stopped, failed player.getTime()', 2)
-                self.player.disable_tracking()
-                continue
-
-            notification_time = self.api.notification_time(total_time=total_time)
-            if total_time - play_time > notification_time:
-                continue
-
-            self.player.set_last_file(current_file)
-            self.log('Show notification as track (length %d secs) ends in %d secs' % (total_time, notification_time), 2)
-            self.playback_manager.launch_next_track()
-            self.log('Next Track autoplay succeeded', 2)
-            self.player.disable_tracking()
+                self._check_playback()
+            except Exception:  # pylint: disable=broad-except
+                # Never let an unexpected error kill the service: log it,
+                # stop tracking the current playback and keep monitoring.
+                self.log('Unexpected error in service loop:\n%s' % format_exc(), 0)
+                self._reset_after_error()
 
         self.log('Service stopped', 0)
+
+    def _reset_after_error(self):
+        """Best-effort cleanup after an unexpected error in the service loop."""
+        for cleanup in (self.player.disable_tracking,
+                        lambda: clear_property('service.nexttrack.dialog'),
+                        self.player.reset_queue,
+                        self.api.reset_addon_data):
+            try:
+                cleanup()
+            except Exception:  # pylint: disable=broad-except
+                self.log('Cleanup after error failed:\n%s' % format_exc(), 0)
+
+    def _check_playback(self):  # pylint: disable=too-many-branches,too-many-return-statements
+        """Check the current playback and launch Next Track when due."""
+        if not self.player.is_tracking():
+            return
+
+        if bool(get_property('PseudoTVRunning') == 'True'):
+            self.player.disable_tracking()
+            return
+
+        if kodi_version_major() >= 18 and self.player.isExternalPlayer():
+            self.log('Next Track tracking stopped, external player detected', 2)
+            self.player.disable_tracking()
+            return
+
+        last_file = self.player.get_last_file()
+        try:
+            current_file = to_unicode(self.player.getPlayingFile())
+        except RuntimeError:
+            self.log('Next Track tracking stopped, failed player.getPlayingFile()', 2)
+            self.player.disable_tracking()
+            return
+
+        if (current_file.startswith((
+                'bluray://', 'dvd://', 'udf://', 'iso9660://', 'cdda://'))
+                or current_file.endswith((
+                    '.bdmv', '.iso', '.ifo'))):
+            self.log('Next Track tracking stopped, Blu-ray/DVD/CD playing', 2)
+            self.player.disable_tracking()
+            return
+
+        if last_file and last_file == current_file:
+            return
+
+        try:
+            total_time = self.player.getTotalTime()
+        except RuntimeError:
+            self.log('Next Track tracking stopped, failed player.getTotalTime()', 2)
+            self.player.disable_tracking()
+            return
+
+        if total_time == 0:
+            self.log('Next Track tracking stopped, no file is playing', 2)
+            self.player.disable_tracking()
+            return
+
+        try:
+            play_time = self.player.getTime()
+        except RuntimeError:
+            self.log('Next Track tracking stopped, failed player.getTime()', 2)
+            self.player.disable_tracking()
+            return
+
+        notification_time = self.api.notification_time(total_time=total_time)
+        if total_time - play_time > notification_time:
+            return
+
+        self.player.set_last_file(current_file)
+        self.log('Show notification as track (length %d secs) ends in %d secs' % (total_time, notification_time), 2)
+        self.playback_manager.launch_next_track()
+        self.log('Next Track autoplay succeeded', 2)
+        self.player.disable_tracking()
 
     def onNotification(self, sender, method, data):  # pylint: disable=invalid-name
         """Notification event handler for accepting data from add-ons."""
