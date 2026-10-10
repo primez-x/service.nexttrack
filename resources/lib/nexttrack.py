@@ -276,8 +276,12 @@ class NextTrack:
         runtime = item.get('runtime') or item.get('duration') or 0
         set_property(PROP_PREFIX + 'runtime', from_unicode(str(runtime)))
 
-    def update_progress_control(self, remaining=None, runtime=None):
-        self.current_progress_percent = max(0, self.current_progress_percent - self.progress_step_size)
+    def update_progress_control(self, remaining=None, runtime=None, period=None):
+        if remaining is not None and period:
+            # From the real time left, so slow ticks don't make the ring drift
+            self.current_progress_percent = min(100.0, max(0.0, 100.0 * remaining / period))
+        else:
+            self.current_progress_percent = max(0, self.current_progress_percent - self.progress_step_size)
         percent = int(self.current_progress_percent)
         set_property(PROP_PREFIX + 'progress', str(percent))
 

@@ -2,6 +2,7 @@
 # GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
 
 from __future__ import absolute_import, division, unicode_literals
+import time
 from traceback import format_exc
 from xbmc import Monitor
 from api import Api
@@ -12,8 +13,15 @@ from statichelper import to_unicode
 from utils import decode_json, get_property, get_setting_bool, kodi_version_major, log as ulog
 
 
+# Nothing queued after this track yet: SpotifyKodiConnect appends later
+# playlist pages and autoplay suggestions in the background, so look again.
+NO_NEXT_RETRY_SECS = 3
+
+
 class NextTrackMonitor(Monitor):
     """Service monitor for Next Track."""
+
+    _retry_at = 0.0
 
     def __init__(self):
         self.player = get_player()
@@ -108,6 +116,8 @@ class NextTrackMonitor(Monitor):
         notification_time = self.api.notification_time(total_time=total_time)
         if total_time - play_time > notification_time:
             return
+        if time.monotonic() < self._retry_at:
+            return
 
         self.player.set_last_file(current_file)
         self.log('Show notification as track (length %d secs) ends in %d secs' % (total_time, notification_time), 2)
@@ -117,8 +127,21 @@ class NextTrackMonitor(Monitor):
             # zone: forget this file so the overlay re-arms for it.
             self.player.set_last_file(None)
             return
+        if result is None:
+            self.player.set_last_file(None)
+            self._retry_at = time.monotonic() + NO_NEXT_RETRY_SECS
+            return
         self.log('Next Track autoplay succeeded', 2)
-        self.player.disable_tracking()
+        # With crossfade the next track starts (and re-enables tracking in
+        # onAVStarted) before the countdown ends: leave that track tracked.
+        if self._is_playing_file(current_file):
+            self.player.disable_tracking()
+
+    def _is_playing_file(self, filename):
+        try:
+            return to_unicode(self.player.getPlayingFile()) == filename
+        except RuntimeError:
+            return False
 
     def onNotification(self, sender, method, data):  # pylint: disable=invalid-name
         """Notification event handler for accepting data from add-ons."""

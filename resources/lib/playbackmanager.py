@@ -2,7 +2,7 @@
 # GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
 
 from __future__ import absolute_import, division, unicode_literals
-from xbmc import sleep
+from xbmc import getCondVisibility, sleep
 from api import Api
 from player import get_player
 from playitem import PlayItem
@@ -105,6 +105,7 @@ class PlaybackManager:
         The caller is responsible for closing the widget.
         """
         UPDATE_INTERVAL_MS = 100
+        PAUSED_INTERVAL_MS = 500
         try:
             play_time = self.player.getTime()
             total_time = self.player.getTotalTime()
@@ -146,8 +147,12 @@ class PlaybackManager:
                 self.log('closing overlay because track duration changed', 2)
                 return POPUP_ABORTED
             runtime = track.get('runtime') or track.get('duration')
-            if not self.state.pause:
-                next_track_widget.update_progress_control(remaining=remaining, runtime=runtime)
+            if self.state.pause or getCondVisibility('Player.Paused'):
+                # Nothing moves while paused: check twice a second only.
+                sleep(PAUSED_INTERVAL_MS)
+                continue
+            next_track_widget.update_progress_control(
+                remaining=remaining, runtime=runtime, period=period_sec)
             sleep(UPDATE_INTERVAL_MS)
 
         return POPUP_DONE
