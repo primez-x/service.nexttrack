@@ -40,7 +40,8 @@ class NextTrackPlayer(Player):
 
     def _check_music(self):
         """Enable tracking when any audio is playing."""
-        self.monitor.waitForAbort(1)
+        # A file started after a pause plays unpaused without onPlayBackResumed.
+        self.state.pause = False
         if not self.isPlayingAudio():
             return
         self.state.track = True

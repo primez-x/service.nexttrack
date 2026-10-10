@@ -2,7 +2,7 @@
 # GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
 
 from __future__ import absolute_import, division, unicode_literals
-from xbmc import PlayList
+from xbmc import PlayList, getCondVisibility
 from api import Api
 from player import get_player
 from state import State
@@ -22,11 +22,17 @@ class PlayItem:
         ulog(msg, name=self.__class__.__name__, level=level)
 
     def get_playlist_position(self):
+        """Playlist position Kodi plays next, or None when it plays nothing next."""
+        if getCondVisibility('Playlist.IsRepeatOne'):
+            return None  # the same song again
         playlist = PlayList(self.api.get_playlistid())
         position = playlist.getposition()
-        if playlist.size() > 1 and position < (playlist.size() - 1):
+        size = playlist.size()
+        if size > 1 and position < (size - 1):
             return position + 1
-        return False
+        if size > 1 and getCondVisibility('Playlist.IsRepeat'):
+            return 0  # repeat all wraps around
+        return None
 
     def get_next(self):
         """Get next track to play, based on current music source."""
@@ -40,9 +46,9 @@ class PlayItem:
             current_track = self.api.handle_addon_lookup_of_current_track()
             if current_track:
                 self.state.current_track_id = current_track.get('trackid')
-            source = 'addon' if not position else 'playlist'
+            source = 'addon' if position is None else 'playlist'
 
-        elif position:
+        elif position is not None:
             track = self.api.get_next_in_playlist(position)
             source = 'playlist'
 

@@ -606,8 +606,10 @@ class MonitorResilienceTests(unittest.TestCase):
                 self.last_file = filename
                 self.last_file_history.append(filename)
 
+            playing_file = "song.mp3"
+
             def getPlayingFile(self):
-                return "song.mp3"
+                return self.playing_file
 
             def getTotalTime(self):
                 return 200
@@ -653,6 +655,37 @@ class MonitorResilienceTests(unittest.TestCase):
         self.assertIs(service.player.tracking, False)
         self.assertEqual(service.player.last_file, "song.mp3")
 
+    def test_crossfaded_next_track_stays_tracked(self):
+        playbackmanager = importlib.import_module("playbackmanager")
+        service = self._service_in_trigger_zone(playbackmanager.POPUP_CLOSED)
+
+        def launch():
+            # The next song started (and enabled tracking) during the countdown
+            service.player.playing_file = "next.mp3"
+            return playbackmanager.POPUP_CLOSED
+
+        service.playback_manager.launch_next_track = launch
+        service._check_playback()
+
+        self.assertIs(service.player.tracking, True)
+
+    def test_missing_next_track_is_looked_up_again(self):
+        monitor = self.monitor
+        service = self._service_in_trigger_zone(None)
+        now = [1000.0]
+        original = monitor.time.monotonic
+        monitor.time.monotonic = lambda: now[0]
+        self.addCleanup(setattr, monitor.time, "monotonic", original)
+
+        service._check_playback()
+        self.assertIs(service.player.tracking, True)
+        self.assertIsNone(service.player.last_file)
+        service._check_playback()  # throttled
+        self.assertEqual(service.playback_manager.calls, 1)
+        now[0] += monitor.NO_NEXT_RETRY_SECS
+        service._check_playback()
+        self.assertEqual(service.playback_manager.calls, 2)
+
     def test_service_shares_one_player_instance(self):
         player_module = importlib.import_module("player")
         created = []
@@ -671,6 +704,56 @@ class MonitorResilienceTests(unittest.TestCase):
         self.assertEqual(len(created), 1)
         self.assertIs(service.playback_manager.player, service.player)
         self.assertIs(service.playback_manager.play_item.player, service.player)
+
+
+class PlaylistPositionTests(unittest.TestCase):
+    def setUp(self):
+        self._module_names = KODI_MODULES + RUNTIME_MODULES
+        self._original_modules = {
+            name: sys.modules.get(name, MISSING) for name in self._module_names
+        }
+        for module_name in self._module_names:
+            sys.modules.pop(module_name, None)
+        self._original_path = list(sys.path)
+        sys.path.insert(0, str(LIB_DIR))
+        install_kodi_mocks()
+        self.playitem = importlib.import_module("playitem")
+
+    def tearDown(self):
+        for module_name in self._module_names:
+            original = self._original_modules[module_name]
+            if original is MISSING:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = original
+        sys.path[:] = self._original_path
+
+    def position(self, position, size, conditions=()):
+        class PlayList(object):
+            def __init__(self, _playlist_id):
+                pass
+
+            def getposition(self):
+                return position
+
+            def size(self):
+                return size
+
+        self.playitem.PlayList = PlayList
+        self.playitem.getCondVisibility = lambda condition: condition in conditions
+        item = self.playitem.PlayItem()
+        item.api = type("Api", (), {"get_playlistid": lambda self: 0})()
+        return item.get_playlist_position()
+
+    def test_next_position(self):
+        self.assertEqual(1, self.position(0, 3))
+        self.assertIsNone(self.position(2, 3))
+
+    def test_repeat_all_wraps_to_the_first_item(self):
+        self.assertEqual(0, self.position(2, 3, ("Playlist.IsRepeat",)))
+
+    def test_repeat_one_plays_nothing_else_next(self):
+        self.assertIsNone(self.position(0, 3, ("Playlist.IsRepeatOne",)))
 
 
 class NextTrackDialogTests(unittest.TestCase):
@@ -730,6 +813,16 @@ class NextTrackDialogTests(unittest.TestCase):
 
         self.assertEqual(self.builtins, ["Action(Info,12006)", "Action(SkipNext,12006)"])
         self.assertEqual(set(self.logs), {self.xbmc.LOGDEBUG})
+
+    def test_progress_follows_the_real_time_left(self):
+        utils = importlib.import_module("utils")
+        widget = self.nexttrack.NextTrack()
+        widget.set_item({"title": "Song"})
+        widget.set_progress_step_size(1.0)
+        widget.show()
+        widget.update_progress_control(remaining=5, period=10)
+        self.assertEqual(utils.get_property("NextTrack.progress"), "50")
+        widget.close()
 
     def test_close_clears_properties_even_if_dialog_close_fails(self):
         utils = importlib.import_module("utils")
