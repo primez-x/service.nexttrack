@@ -207,19 +207,19 @@ class Api:
             self.log('Playing the next item directly: %(play_url)s' % self.data, 2)
             jsonrpc(method='Player.Open', params={'item': {'file': self.data.get('play_url')}})
         else:
-            self.log('Sending %(encoding)s data to add-on to play: %(play_info)s' % dict(encoding=self.encoding, **self.data), 2)  # pylint: disable=use-dict-literal
+            self.log('Sending %s data to add-on to play: %s' % (self.encoding, self.data.get('play_info')), 2)
             event(message=self.data.get('id'), data=self.data.get('play_info'), sender='nexttrackprovider', encoding=self.encoding)
 
     def handle_addon_lookup_of_next_track(self):
         if not self.data:
             return None
-        self.log('handle_addon_lookup_of_next_track returning data %(next_track)s' % self.data, 2)
+        self.log('handle_addon_lookup_of_next_track returning data %s' % self.data.get('next_track'), 2)
         return self.data.get('next_track')
 
     def handle_addon_lookup_of_current_track(self):
         if not self.data:
             return None
-        self.log('handle_addon_lookup_of_current_track returning data %(current_track)s' % self.data, 2)
+        self.log('handle_addon_lookup_of_current_track returning data %s' % self.data.get('current_track'), 2)
         return self.data.get('current_track')
 
     def notification_time(self, total_time=None):

@@ -34,6 +34,15 @@ class PlayItem:
             return 0  # repeat all wraps around
         return None
 
+    def get_playlist_file(self, position):
+        """File of the playlist item at position, or None."""
+        if position is None:
+            return None
+        try:
+            return PlayList(self.api.get_playlistid())[position].getPath()
+        except (IndexError, RuntimeError, TypeError, AttributeError):
+            return None
+
     def get_next(self):
         """Get next track to play, based on current music source."""
         track = None

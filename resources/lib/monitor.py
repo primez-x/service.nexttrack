@@ -7,7 +7,7 @@ from traceback import format_exc
 from xbmc import Monitor
 from api import Api
 from nexttrack import clear_properties
-from playbackmanager import POPUP_ABORTED, PlaybackManager
+from playbackmanager import POPUP_ABORTED, POPUP_CLOSED, PlaybackManager
 from player import get_player
 from statichelper import to_unicode
 from utils import decode_json, get_property, get_setting_bool, kodi_version_major, log as ulog
@@ -35,6 +35,9 @@ class NextTrackMonitor(Monitor):
     def run(self):
         """Main service loop."""
         self.log('Service started', 0)
+        # A previous instance killed during a countdown (add-on update, crash)
+        # leaves the skin's global Next Track overlay visible
+        clear_properties()
 
         while not self.abortRequested():
             if self.waitForAbort(1):
@@ -122,9 +125,12 @@ class NextTrackMonitor(Monitor):
         self.player.set_last_file(current_file)
         self.log('Show notification as track (length %d secs) ends in %d secs' % (total_time, notification_time), 2)
         result = self.playback_manager.launch_next_track()
-        if result == POPUP_ABORTED:
+        if result == POPUP_ABORTED or (
+                result == POPUP_CLOSED and self._is_playing_file(current_file)):
             # Popup closed because the user sought back out of the trigger
-            # zone: forget this file so the overlay re-arms for it.
+            # zone, or the playlist changed under it (shuffle toggled, a song
+            # inserted to play next) while this song plays on: forget this
+            # file so the overlay re-arms and announces what plays next now.
             self.player.set_last_file(None)
             return
         if result is None:

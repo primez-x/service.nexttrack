@@ -49,6 +49,9 @@ def install_kodi_mocks():
         def waitForAbort(self, _timeout):
             return False
 
+        def abortRequested(self):
+            return False
+
     class MockPlayList(object):
         def __init__(self, _playlist_id):
             pass
@@ -258,10 +261,16 @@ class FakePlayer(object):
 
 
 class FakePlayItem(object):
-    def __init__(self, track, source, positions=None):
+    def __init__(self, track, source, positions=None, files=None):
         self.track = track
         self.source = source
         self.positions = list(positions or [False])
+        self.files = list(files or [None])
+
+    def get_playlist_file(self, _position):
+        if len(self.files) > 1:
+            return self.files.pop(0)
+        return self.files[0]
 
     def get_next(self):
         return self.track, self.source
@@ -490,6 +499,53 @@ class PlaybackManagerTests(unittest.TestCase):
         self.assertEqual(self.widgets.instances[-1].close_calls, 1)
 
 
+    def test_next_playlist_item_change_during_countdown_closes_overlay(self):
+        # "Play next" inserts a song (or shuffle is toggled): same position,
+        # different song next, so the overlay must not keep announcing the old one
+        track = {"trackid": -1, "file": "http://127.0.0.1:52309/track/old/180.wav"}
+        state = FakeState()
+        api = FakeApi(notification_time=15)
+        player = FakePlayer(
+            times=[90, 91, 92],
+            totals=[100],
+            playing=[True, True, True, True, False],
+            files=["current.wav"],
+        )
+        play_item = FakePlayItem(
+            track, "playlist", positions=[3],
+            files=[track["file"], track["file"],
+                   "http://127.0.0.1:52309/track/inserted/200.wav"])
+        manager = make_manager(
+            self.playbackmanager, api, player, state, play_item=play_item)
+
+        result = manager.launch_popup(track, source="playlist")
+
+        self.assertEqual(result, self.playbackmanager.POPUP_CLOSED)
+        self.assertEqual(self.widgets.instances[-1].close_calls, 1)
+
+    def test_abort_during_countdown_closes_overlay(self):
+        state = FakeState()
+        api = FakeApi(notification_time=15)
+        player = FakePlayer(
+            times=[90], totals=[100], playing=[True] * 5 + [False],
+            files=["song.mp3"])
+        manager = make_manager(self.playbackmanager, api, player, state)
+
+        class AbortingMonitor(object):
+            def abortRequested(self):
+                return True
+
+        self.playbackmanager.Monitor = AbortingMonitor
+        # Paused overlays wait forever: the abort must end the loop regardless
+        state.pause = True
+
+        result = manager.launch_popup({"trackid": 9}, source="library")
+
+        self.assertEqual(result, self.playbackmanager.POPUP_CLOSED)
+        self.assertEqual(self.widgets.instances[-1].close_calls, 1)
+        self.assertEqual(player.playnext_calls, 0)
+
+
 class MonitorResilienceTests(unittest.TestCase):
     def setUp(self):
         self._module_names = KODI_MODULES + RUNTIME_MODULES
@@ -669,6 +725,31 @@ class MonitorResilienceTests(unittest.TestCase):
 
         self.assertIs(service.player.tracking, True)
 
+    def test_closed_popup_rearms_while_the_same_song_plays_on(self):
+        playbackmanager = importlib.import_module("playbackmanager")
+        service = self._service_in_trigger_zone(playbackmanager.POPUP_CLOSED)
+
+        service._check_playback()
+
+        self.assertIs(service.player.tracking, True)
+        self.assertEqual(service.player.last_file_history, ["song.mp3", None])
+        service._check_playback()
+        self.assertEqual(service.playback_manager.calls, 2)
+
+    def test_service_start_clears_stale_overlay_properties(self):
+        utils = importlib.import_module("utils")
+        nexttrack = importlib.import_module("nexttrack")
+        utils.set_property(nexttrack.PROP_PREFIX + "IsVisible", "true")
+        utils.set_property(nexttrack.DIALOG_PROPERTY, "true")
+        service = self.monitor.NextTrackMonitor.__new__(self.monitor.NextTrackMonitor)
+        service.abortRequested = lambda: False
+        service.waitForAbort = lambda _timeout: True
+
+        service.run()
+
+        self.assertEqual(utils.get_property(nexttrack.PROP_PREFIX + "IsVisible"), "")
+        self.assertEqual(utils.get_property(nexttrack.DIALOG_PROPERTY), "")
+
     def test_missing_next_track_is_looked_up_again(self):
         monitor = self.monitor
         service = self._service_in_trigger_zone(None)
@@ -754,6 +835,40 @@ class PlaylistPositionTests(unittest.TestCase):
 
     def test_repeat_one_plays_nothing_else_next(self):
         self.assertIsNone(self.position(0, 3, ("Playlist.IsRepeatOne",)))
+
+
+class AddonDataTests(unittest.TestCase):
+    def setUp(self):
+        self._module_names = KODI_MODULES + RUNTIME_MODULES
+        self._original_modules = {
+            name: sys.modules.get(name, MISSING) for name in self._module_names
+        }
+        for module_name in self._module_names:
+            sys.modules.pop(module_name, None)
+        self._original_path = list(sys.path)
+        sys.path.insert(0, str(LIB_DIR))
+        install_kodi_mocks()
+        self.api = importlib.import_module("api")
+
+    def tearDown(self):
+        for module_name in self._module_names:
+            original = self._original_modules[module_name]
+            if original is MISSING:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = original
+        sys.path[:] = self._original_path
+
+    def test_provider_data_without_current_track_is_accepted(self):
+        # get_next() treats current_track as optional: logging must not
+        # raise KeyError and make the service drop the provider's data
+        api = self.api.Api()
+        api.addon_data_received({"next_track": {"title": "Next"}, "id": "x_play_action"})
+
+        self.assertEqual(api.handle_addon_lookup_of_next_track(), {"title": "Next"})
+        self.assertIsNone(api.handle_addon_lookup_of_current_track())
+        api.play_addon_item()
+        api.reset_addon_data()
 
 
 class NextTrackDialogTests(unittest.TestCase):

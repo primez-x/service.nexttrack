@@ -2,7 +2,7 @@
 # GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
 
 from __future__ import absolute_import, division, unicode_literals
-from xbmc import getCondVisibility, sleep
+from xbmc import getCondVisibility, sleep, Monitor
 from api import Api
 from player import get_player
 from playitem import PlayItem
@@ -127,8 +127,14 @@ class PlaybackManager:
 
         initial_total_time = total_time
         notification_threshold = self.api.notification_time(total_time=total_time)
+        monitor = Monitor()
 
         while self.player.isPlaying() and (total_time - play_time > 1):
+            if monitor.abortRequested():
+                # Service restart (add-on update) or Kodi exit: clear the
+                # overlay now, Kodi kills a service that does not exit in time
+                self.log('closing overlay because Kodi requested an abort', 2)
+                return POPUP_CLOSED
             try:
                 play_time = self.player.getTime()
                 total_time = self.player.getTotalTime()
@@ -165,12 +171,15 @@ class PlaybackManager:
             return None
 
         playlist_position = None
+        playlist_file = None
         if source == 'playlist':
             playlist_position = self.play_item.get_playlist_position()
+            playlist_file = self.play_item.get_playlist_file(playlist_position)
 
         return {
             'file': player_file,
             'playlist_position': playlist_position,
+            'playlist_file': playlist_file,
             'current_track_id': self.state.current_track_id,
         }
 
@@ -189,6 +198,9 @@ class PlaybackManager:
             playlist_position = self.play_item.get_playlist_position()
             if playlist_position != snapshot.get('playlist_position'):
                 self.log('closing overlay because playlist position changed', 2)
+                return True
+            if self.play_item.get_playlist_file(playlist_position) != snapshot.get('playlist_file'):
+                self.log('closing overlay because the next playlist item changed', 2)
                 return True
 
         if self.state.current_track_id != snapshot.get('current_track_id'):
