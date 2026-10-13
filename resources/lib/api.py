@@ -2,7 +2,7 @@
 # GNU General Public License v2.0 (see COPYING or https://www.gnu.org/licenses/gpl-2.0.txt)
 
 from __future__ import absolute_import, division, unicode_literals
-from xbmc import sleep, PLAYLIST_VIDEO, PLAYLIST_MUSIC
+from xbmc import sleep, PlayList, PLAYLIST_VIDEO, PLAYLIST_MUSIC
 from utils import event, get_int, get_property, get_setting_bool, get_setting_int, jsonrpc, log as ulog
 
 
@@ -11,6 +11,8 @@ class Api:
     _shared_state = {}
     _playerid_cache = None
     _playlistid_cache = None
+    # Playlist position of the item added by queue_next_item()
+    queued_position = None
 
     PLAYER_PLAYLIST = {
         'video': PLAYLIST_VIDEO,  # 1
@@ -86,30 +88,41 @@ class Api:
     def queue_next_item(self, track):
         next_item = {}
         if not self.data:
-            next_item.update(songid=track.get('trackid'))
+            trackid = track.get('trackid')
+            if trackid in (None, -1):
+                # Without a valid song id Playlist.Add would be invalid;
+                # reporting queued=True made the manager playnext() into
+                # whatever happened to follow in the playlist
+                self.log('Not queueing next track without a valid trackid: %s' % track, 1)
+                return False
+            next_item.update(songid=trackid)
         elif self.data.get('play_url'):
             next_item.update(file=self.data.get('play_url'))
 
         if next_item:
+            playlistid = Api.get_playlistid()
+            # Playlist.Add appends: remember where, the current item is not
+            # always at position 0 (e.g. the last track of a long playlist)
+            self.queued_position = PlayList(playlistid).size()
             jsonrpc(
                 method='Playlist.Add',
                 id=0,
                 params={
-                    'playlistid': Api.get_playlistid(),
+                    'playlistid': playlistid,
                     'item': next_item
                 }
             )
 
         return bool(next_item)
 
-    @staticmethod
-    def dequeue_next_item():
+    def dequeue_next_item(self):
+        position, self.queued_position = self.queued_position, None
         jsonrpc(
             method='Playlist.Remove',
             id=0,
             params={
                 'playlistid': Api.get_playlistid(),
-                'position': 1
+                'position': 1 if position is None else position
             }
         )
         return False
@@ -222,11 +235,23 @@ class Api:
         self.log('handle_addon_lookup_of_current_track returning data %s' % self.data.get('current_track'), 2)
         return self.data.get('current_track')
 
-    def notification_time(self, total_time=None):
-        if self.data.get('notification_time'):
-            return int(self.data.get('notification_time'))
+    def _provider_int(self, key):
+        value = self.data.get(key)
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            self.log('Ignoring invalid %s from provider: %s' % (key, value), 1)
+            return None
 
-        if total_time and self.data.get('notification_offset'):
-            return total_time - int(self.data.get('notification_offset'))
+    def notification_time(self, total_time=None):
+        notification_time = self._provider_int('notification_time')
+        if notification_time is not None:
+            return max(0, notification_time)
+
+        notification_offset = self._provider_int('notification_offset')
+        if total_time and notification_offset is not None:
+            return total_time - notification_offset
 
         return get_setting_int('notificationSeconds', 15)

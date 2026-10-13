@@ -172,6 +172,9 @@ def load_playbackmanager_subject():
         def update_progress_control(self, **kwargs):
             self.progress_updates.append(kwargs)
 
+        def maybe_demote_for_osd(self):
+            return False
+
     playbackmanager.NextTrack = FakeNextTrack
     playbackmanager.sleep = lambda _milliseconds: None
     playbackmanager.event = lambda **_kwargs: None

@@ -4,6 +4,7 @@
 from __future__ import absolute_import, division, unicode_literals
 import sys
 import json
+from time import time as epoch_time
 from xbmc import executeJSONRPC, getInfoLabel, getRegion, log as xlog, LOGDEBUG, LOGINFO
 from xbmcaddon import Addon
 from xbmcgui import Window
@@ -11,6 +12,9 @@ from statichelper import from_unicode, to_unicode
 
 ADDON = Addon()
 HOME_WINDOW = Window(10000)
+
+LOG_SETTINGS_TTL = 30  # seconds
+_LOG_SETTINGS = {}
 
 
 def get_addon_info(key):
@@ -134,7 +138,7 @@ def decode_data(encoded):
         json_data = unhexlify(encoded)
     except (TypeError, Error):
         from base64 import b64decode
-        json_data = b64decode(encoded)
+        json_data = b64decode(encoded, validate=False)
     else:
         encoding = 'hex'
     # NOTE: With Python 3.5 and older json.loads() does not support bytes or bytearray, so we convert to unicode
@@ -142,10 +146,15 @@ def decode_data(encoded):
 
 
 def decode_json(data):
-    encoded = json.loads(data)
-    if not encoded:
+    # Provider payloads are untrusted input: malformed data must read as
+    # "not JSON" (the monitors' None branch), never raise in onNotification
+    try:
+        encoded = json.loads(data)
+        if not encoded:
+            return None, None
+        return decode_data(encoded[0])
+    except Exception:  # pylint: disable=broad-except
         return None, None
-    return decode_data(encoded[0])
 
 
 def event(message, data=None, sender=None, encoding='base64'):
@@ -164,13 +173,25 @@ def event(message, data=None, sender=None, encoding='base64'):
     })
 
 
+def refresh_log_settings():
+    """Read the log settings, they are cached for LOG_SETTINGS_TTL seconds"""
+    _LOG_SETTINGS.update(
+        log_level=get_setting_int('logLevel'),
+        debug_logging=bool(get_global_setting('debug.showloginfo')),
+        expires=epoch_time() + LOG_SETTINGS_TTL,
+    )
+
+
 def log(msg, name=None, level=1):
     """Log information to the Kodi log. Short-circuits by level to avoid costly calls when filtered."""
-    log_level = get_setting_int('logLevel', level)
+    if _LOG_SETTINGS.get('expires', 0) < epoch_time():
+        refresh_log_settings()
+    log_level = _LOG_SETTINGS.get('log_level')
+    if log_level is None:
+        log_level = level
     if log_level < level:
         return
-    debug_logging = get_global_setting('debug.showloginfo')
-    set_property('logLevel', log_level)
+    debug_logging = _LOG_SETTINGS.get('debug_logging')
     if debug_logging:
         kodi_level = LOGDEBUG
     elif get_kodi_version() >= 19:

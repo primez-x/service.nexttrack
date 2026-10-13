@@ -157,6 +157,10 @@ class PlaybackManager:
                 # Nothing moves while paused: check twice a second only.
                 sleep(PAUSED_INTERVAL_MS)
                 continue
+            if next_track_widget.maybe_demote_for_osd():
+                # User opened the music/video OSD: focus is back there and
+                # the countdown continues as a passive toast
+                self.log('demoted overlay because an interactive OSD opened', 2)
             next_track_widget.update_progress_control(
                 remaining=remaining, runtime=runtime, period=period_sec)
             sleep(UPDATE_INTERVAL_MS)

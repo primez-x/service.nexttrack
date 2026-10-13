@@ -8,7 +8,7 @@ import xbmc
 import xbmcgui
 import xbmcvfs
 from statichelper import from_unicode
-from utils import addon_path, localize_time, set_property, clear_property
+from utils import addon_path, localize, localize_time, set_property, clear_property
 
 PROP_PREFIX = 'NextTrack.'
 
@@ -156,6 +156,10 @@ class NextTrackDialog(xbmcgui.WindowXMLDialog):
             if action_name:
                 # Dispatch directly to the underlying window by ID using action name
                 xbmc.executebuiltin('Action(%s,%d)' % (action_name, self._underlying_dialog_id or self._underlying_window_id))
+            else:
+                # Input we cannot forward (FF/RW, mouse, ...): get out of
+                # the way instead of swallowing it for the whole countdown
+                self.close()
 
     def update_display(self, percent, remaining=None, endtime=None):
         """Update the progress ring, progress bar, and countdown label."""
@@ -224,6 +228,29 @@ class NextTrack:
                 import xbmc as _xbmc
                 _xbmc.log('[service.nexttrack] NextTrackDialog show() failed: %s' % e, _xbmc.LOGINFO)
                 self._dialog = None
+
+    def maybe_demote_for_osd(self):
+        """Demote to a passive toast if an interactive OSD just opened."""
+        if self._dialog and self._interactive_osd_visible():
+            return self.demote_to_passive()
+        return False
+
+    def demote_to_passive(self):
+        """Close the standalone dialog and fall back to a toast.
+
+        Used when the user opens an interactive OSD during the countdown:
+        the dialog would otherwise keep focus and swallow input it cannot
+        forward (FF/RW, mouse) for the rest of the countdown.
+        """
+        if not self._dialog:
+            return False
+        dialog, self._dialog = self._dialog, None
+        try:
+            dialog.close()
+        except Exception:  # pylint: disable=broad-except
+            pass
+        self._show_passive_notification()
+        return True
 
     def close(self):
         """Clear all properties and close the overlay."""
@@ -338,13 +365,16 @@ class NextTrack:
     def _show_passive_notification(self):
         item = self.item or {}
         art = item.get('art', {}) or {}
-        title = item.get('title', '') or item.get('label', '') or 'Next track'
+        title = item.get('title', '') or item.get('label', '') or localize(30049)
         artist = _join_artist(item.get('artist', ''))
-        message = artist if artist else item.get('album', '')
+        if artist and title:
+            message = '%s - %s' % (artist, title)
+        else:
+            message = artist or item.get('album', '') or title
         icon = _art_value(art, 'thumb', 'poster', 'icon', 'fanart', 'landscape')
         xbmcgui.Dialog().notification(
-            'Next Track',
-            from_unicode(message or title),
+            localize(30008),
+            from_unicode(message),
             icon,
             5000,
             sound=False

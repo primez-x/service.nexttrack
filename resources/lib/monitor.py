@@ -32,6 +32,8 @@ class NextTrackMonitor(Monitor):
     def log(self, msg, level=1):
         ulog(msg, name=self.__class__.__name__, level=level)
 
+    _poll_delay = 1
+
     def run(self):
         """Main service loop."""
         self.log('Service started', 0)
@@ -40,8 +42,11 @@ class NextTrackMonitor(Monitor):
         clear_properties()
 
         while not self.abortRequested():
-            if self.waitForAbort(1):
+            # _check_playback stretches this (up to 10s) while a track is
+            # far from its notification time
+            if self.waitForAbort(self._poll_delay):
                 break
+            self._poll_delay = 1
 
             try:
                 self._check_playback()
@@ -118,6 +123,10 @@ class NextTrackMonitor(Monitor):
 
         notification_time = self.api.notification_time(total_time=total_time)
         if total_time - play_time > notification_time:
+            # Nothing can happen until the notification window: poll again
+            # shortly before it (capped so seeks are noticed within ~10s)
+            remaining = total_time - play_time - notification_time
+            self._poll_delay = min(10, max(1, remaining))
             return
         if time.monotonic() < self._retry_at:
             return
