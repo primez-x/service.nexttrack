@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="service.nexttrack" name="Next Track" version="1.1.0" provider-name="primez-x">
+<addon id="service.nexttrack" name="Next Track" version="1.1.1" provider-name="primez-x">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -13,7 +13,10 @@
         <platform>all</platform>
         <license>GPL-2.0-only</license>
         <source>https://github.com/primez-x/service.nexttrack</source>
-        <news>v1.1.0
+        <news>v1.1.1
+- Share runtime utilities and remove only successfully queued tracks.
+
+v1.1.0
 - Fix removing the wrong playlist track when a queued next track was not played: the exact track that was queued is now removed, and a track without a valid id is no longer reported as queued.
 - The passive "next track" toast now shows the song title (artist - title) instead of only the artist.
 - Opening the music OSD during the countdown now hands focus back and continues as a toast, and input the overlay cannot forward (fast-forward/rewind, mouse) closes it instead of being swallowed.

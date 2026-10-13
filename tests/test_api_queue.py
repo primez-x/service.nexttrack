@@ -129,6 +129,29 @@ class ApiQueueTests(unittest.TestCase):
         self.assertFalse(api.queue_next_item({}))
         self.assertEqual(len(FakePlaylist.items), 3)
 
+    def test_failed_add_does_not_claim_or_remove_a_playlist_item(self):
+        original_jsonrpc = self.api.jsonrpc
+
+        def failed_add(method=None, id=None, params=None, **kwargs):  # pylint: disable=redefined-builtin
+            if method == 'Playlist.Add':
+                self.calls.append((method, params))
+                return {'error': {'code': -1, 'message': 'Playlist.Add failed'}}
+            return original_jsonrpc(method=method, id=id, params=params, **kwargs)
+
+        self.api.jsonrpc = failed_add
+        api = self.api.Api()
+
+        self.assertFalse(api.queue_next_item({'trackid': 42}))
+        self.assertIsNone(api.queued_position)
+        self.assertFalse(api.dequeue_next_item())
+        self.assertFalse(any(method == 'Playlist.Remove' for method, _ in self.calls))
+
+    def test_dequeue_without_owned_item_does_not_remove_a_playlist_entry(self):
+        api = self.api.Api()
+
+        self.assertFalse(api.dequeue_next_item())
+        self.assertFalse(any(method == 'Playlist.Remove' for method, _ in self.calls))
+
     def test_invalid_provider_notification_time_is_ignored(self):
         api = self.api.Api()
         api.data = {'notification_time': 'soon'}

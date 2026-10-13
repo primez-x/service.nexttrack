@@ -4,8 +4,10 @@
 from __future__ import absolute_import, division, unicode_literals
 import sys
 import json
+from datetime import date
+from re import split as re_split
 from time import time as epoch_time
-from xbmc import executeJSONRPC, getInfoLabel, getRegion, log as xlog, LOGDEBUG, LOGINFO
+from xbmc import executeJSONRPC, getCondVisibility, getInfoLabel, getRegion, log as xlog, LOGDEBUG, LOGINFO
 from xbmcaddon import Addon
 from xbmcgui import Window
 from statichelper import from_unicode, to_unicode
@@ -13,6 +15,10 @@ from statichelper import from_unicode, to_unicode
 ADDON = Addon()
 HOME_WINDOW = Window(10000)
 
+# Settings that are read every service tick are cached per playback, see clear_setting_cache()
+_SETTINGS_CACHE = {}
+
+# The log settings are needed for every log() call, so cache them for a while
 LOG_SETTINGS_TTL = 30  # seconds
 _LOG_SETTINGS = {}
 
@@ -38,22 +44,27 @@ def get_kodi_version():
     return float(build[:4])
 
 
+def is_repeat_one():
+    """Return True when the playing playlist repeats the current item, Kodi then plays it again"""
+    return bool(getCondVisibility('Playlist.IsRepeatOne'))
+
+
 def get_property(key, window_id=10000):
-    """Get a Window property (uses shared Home window when window_id is 10000)."""
+    """Get a Window property"""
     if window_id == 10000:
         return to_unicode(HOME_WINDOW.getProperty(key))
     return to_unicode(Window(window_id).getProperty(key))
 
 
 def set_property(key, value, window_id=10000):
-    """Set a Window property (uses shared Home window when window_id is 10000)."""
+    """Set a Window property"""
     if window_id == 10000:
         return HOME_WINDOW.setProperty(key, from_unicode(str(value)))
     return Window(window_id).setProperty(key, from_unicode(str(value)))
 
 
 def clear_property(key, window_id=10000):
-    """Clear a Window property (uses shared Home window when window_id is 10000)."""
+    """Clear a Window property"""
     if window_id == 10000:
         return HOME_WINDOW.clearProperty(key)
     return Window(window_id).clearProperty(key)
@@ -86,8 +97,10 @@ def get_setting(key, default=None):
     return value
 
 
-def get_setting_bool(key, default=None):
+def get_setting_bool(key, default=None, cache=False):
     """Get an add-on setting as boolean"""
+    if cache:
+        return _cached_setting(get_setting_bool, key, default)
     try:
         return Addon().getSettingBool(key)
     except (AttributeError, TypeError):  # On Krypton or older, or when not a boolean
@@ -99,8 +112,10 @@ def get_setting_bool(key, default=None):
         return default
 
 
-def get_setting_int(key, default=None):
+def get_setting_int(key, default=None, cache=False):
     """Get an add-on setting as integer"""
+    if cache:
+        return _cached_setting(get_setting_int, key, default)
     try:
         return Addon().getSettingInt(key)
     except (AttributeError, TypeError):  # On Krypton or older, or when not an integer
@@ -113,6 +128,20 @@ def get_setting_int(key, default=None):
         return default
 
 
+def _cached_setting(getter, key, default):
+    """Return a setting from the cache, reading it on first use"""
+    cache_key = (getter.__name__, key)
+    if cache_key not in _SETTINGS_CACHE:
+        _SETTINGS_CACHE[cache_key] = getter(key, default)
+    return _SETTINGS_CACHE[cache_key]
+
+
+def clear_setting_cache():
+    """Forget cached settings, used when playback starts or the settings changed"""
+    _SETTINGS_CACHE.clear()
+    _LOG_SETTINGS.clear()
+
+
 def encode_data(data, encoding='base64'):
     """Encode data for a notification event"""
     json_data = json.dumps(data).encode()
@@ -123,7 +152,7 @@ def encode_data(data, encoding='base64'):
         from binascii import hexlify
         encoded_data = hexlify(json_data)
     else:
-        log("Unknown payload encoding type '%s'" % encoding, level=0)
+        log("Unknown payload encoding type '%s'", encoding, level=0)
         return None
     if sys.version_info[0] > 2:
         encoded_data = encoded_data.decode('ascii')
@@ -175,37 +204,45 @@ def event(message, data=None, sender=None, encoding='base64'):
 
 def refresh_log_settings():
     """Read the log settings, they are cached for LOG_SETTINGS_TTL seconds"""
+    log_level = get_setting_int('logLevel')
     _LOG_SETTINGS.update(
-        log_level=get_setting_int('logLevel'),
+        log_level=log_level,
         debug_logging=bool(get_global_setting('debug.showloginfo')),
         expires=epoch_time() + LOG_SETTINGS_TTL,
     )
 
 
-def log(msg, name=None, level=1):
-    """Log information to the Kodi log. Short-circuits by level to avoid costly calls when filtered."""
+def log(msg, *args, **kwargs):
+    """Log information to the Kodi log
+
+    The message is only %-formatted with args when it is actually logged.
+    Supported keyword arguments are name and level (default: 1).
+    """
+    level = kwargs.get('level', 1)
     if _LOG_SETTINGS.get('expires', 0) < epoch_time():
         refresh_log_settings()
     log_level = _LOG_SETTINGS.get('log_level')
-    if log_level is None:
-        log_level = level
-    if log_level < level:
-        return
     debug_logging = _LOG_SETTINGS.get('debug_logging')
+    # When the logLevel setting cannot be read, log everything
+    if not debug_logging and log_level is not None and log_level < level:
+        return
+    if args:
+        if len(args) == 1 and isinstance(args[0], dict):
+            args = args[0]
+        msg = msg % args
     if debug_logging:
-        kodi_level = LOGDEBUG
+        level = LOGDEBUG
     elif get_kodi_version() >= 19:
-        kodi_level = LOGINFO
+        level = LOGINFO
     else:
-        kodi_level = LOGINFO + 1
-    xlog('[%s] %s -> %s' % (get_addon_info('id'), name, from_unicode(msg)), level=kodi_level)
+        level = LOGINFO + 1
+    xlog('[%s] %s -> %s' % (addon_id(), kwargs.get('name'), from_unicode(msg)), level=level)
 
 
-def calculate_progress_steps(period, update_interval_sec=0.5):
-    """Calculate progress percent to subtract per tick so the bar drains over period seconds.
-    update_interval_sec is the sleep interval between ticks (e.g. 0.5 for 500ms)."""
+def calculate_progress_steps(period, update_interval_sec=0.1):
+    """Calculate the progress percentage to subtract for each tick."""
     period = int(period)
-    if period == 0:
+    if period == 0:  # Avoid division by zero
         return 10.0
     return (100.0 * update_interval_sec) / period
 
@@ -232,6 +269,23 @@ def localize(string_id):
     return ADDON.getLocalizedString(string_id)
 
 
+def localize_date(date_string):
+    """Localize date format"""
+    date_format = getRegion('dateshort')
+
+    try:
+        # A number of assumptions are made here about date_string
+        # format to avoid having to import dateutil or similar
+        date_object = date(*(
+            int(part)
+            for part in re_split(r'[\W]', date_string)[:3]
+        ))
+    except ValueError:
+        return date_string
+
+    return date_object.strftime(date_format)
+
+
 def localize_time(time):
     """Localize time format"""
     time_format = getRegion('time')
@@ -254,4 +308,3 @@ def kodi_version():
 def kodi_version_major():
     """Returns major Kodi version as integer"""
     return int(kodi_version().split('.')[0])
-

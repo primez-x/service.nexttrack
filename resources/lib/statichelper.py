@@ -18,4 +18,3 @@ def from_unicode(text, encoding='utf-8', errors='strict'):
     if sys.version_info.major == 2 and isinstance(text, unicode):  # noqa: F821; pylint: disable=undefined-variable,useless-suppression
         return text.encode(encoding, errors)
     return text
-

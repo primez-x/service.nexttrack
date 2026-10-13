@@ -103,8 +103,8 @@ class Api:
             playlistid = Api.get_playlistid()
             # Playlist.Add appends: remember where, the current item is not
             # always at position 0 (e.g. the last track of a long playlist)
-            self.queued_position = PlayList(playlistid).size()
-            jsonrpc(
+            position = PlayList(playlistid).size()
+            result = jsonrpc(
                 method='Playlist.Add',
                 id=0,
                 params={
@@ -112,17 +112,22 @@ class Api:
                     'item': next_item
                 }
             )
+            if result.get('error'):
+                return False
+            self.queued_position = position
 
         return bool(next_item)
 
     def dequeue_next_item(self):
         position, self.queued_position = self.queued_position, None
+        if position is None:
+            return False
         jsonrpc(
             method='Playlist.Remove',
             id=0,
             params={
                 'playlistid': Api.get_playlistid(),
-                'position': 1 if position is None else position
+                'position': position
             }
         )
         return False
