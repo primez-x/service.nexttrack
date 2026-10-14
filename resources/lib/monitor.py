@@ -165,7 +165,7 @@ class NextTrackMonitor(Monitor):
 
         decoded_data, encoding = decode_json(data)
         if decoded_data is None:
-            self.log('Received data from sender %s is not JSON: %s' % (sender, data), 2)
+            self.log('Received data from sender %s is not JSON' % sender, 2)
             return
 
         decoded_data.update(id='%s_play_action' % sender.replace('.SIGNAL', ''))

@@ -40,7 +40,7 @@ class Api:
         Api._playlistid_cache = None
 
     def addon_data_received(self, data, encoding='base64'):
-        self.log('addon_data_received called with data %s' % data, 2)
+        self.log('addon_data_received called', 2)
         self.data = data
         self.encoding = encoding
 
@@ -93,7 +93,7 @@ class Api:
                 # Without a valid song id Playlist.Add would be invalid;
                 # reporting queued=True made the manager playnext() into
                 # whatever happened to follow in the playlist
-                self.log('Not queueing next track without a valid trackid: %s' % track, 1)
+                self.log('Not queueing next track without a valid trackid', 1)
                 return False
             next_item.update(songid=trackid)
         elif self.data.get('play_url'):
@@ -167,7 +167,7 @@ class Api:
 
         item['trackid'] = get_int(item, 'id')
 
-        self.log('Next item in playlist: %s' % item, 2)
+        self.log('Found next item in playlist', 2)
         return item
 
     @staticmethod
@@ -222,22 +222,22 @@ class Api:
 
     def play_addon_item(self):
         if self.data.get('play_url'):
-            self.log('Playing the next item directly: %(play_url)s' % self.data, 2)
+            self.log('Playing the next item directly', 2)
             jsonrpc(method='Player.Open', params={'item': {'file': self.data.get('play_url')}})
         else:
-            self.log('Sending %s data to add-on to play: %s' % (self.encoding, self.data.get('play_info')), 2)
+            self.log('Sending %s data to add-on to play' % self.encoding, 2)
             event(message=self.data.get('id'), data=self.data.get('play_info'), sender='nexttrackprovider', encoding=self.encoding)
 
     def handle_addon_lookup_of_next_track(self):
         if not self.data:
             return None
-        self.log('handle_addon_lookup_of_next_track returning data %s' % self.data.get('next_track'), 2)
+        self.log('Returning next track data', 2)
         return self.data.get('next_track')
 
     def handle_addon_lookup_of_current_track(self):
         if not self.data:
             return None
-        self.log('handle_addon_lookup_of_current_track returning data %s' % self.data.get('current_track'), 2)
+        self.log('Returning current track data', 2)
         return self.data.get('current_track')
 
     def _provider_int(self, key):
@@ -247,7 +247,7 @@ class Api:
         try:
             return int(value)
         except (TypeError, ValueError):
-            self.log('Ignoring invalid %s from provider: %s' % (key, value), 1)
+            self.log('Ignoring invalid %s from provider' % key, 1)
             return None
 
     def notification_time(self, total_time=None):

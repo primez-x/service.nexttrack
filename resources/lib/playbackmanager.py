@@ -37,7 +37,7 @@ class PlaybackManager:
         if not track:
             self.log('Error: no track could be found to play next...exiting', 1)
             return None
-        self.log('track details %s' % track, 2)
+        self.log('next track found', 2)
         result = self.launch_popup(track, source)
         play_next = result == POPUP_PLAYED
         self.state.playing_next = play_next
