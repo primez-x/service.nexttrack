@@ -18,6 +18,7 @@ PROPERTY_KEYS = ('IsVisible', 'Available', 'title', 'artist', 'album', 'thumb',
                  'rating', 'playcount', 'runtime', 'remaining', 'endtime',
                  'progress', 'file', 'label', 'source', 'trackid')
 DIALOG_PROPERTY = 'service.nexttrack.dialog'
+_SKIN_SUPPORT = {}
 
 # Kodi action IDs (xbmcgui.ACTION_* / Kodi's ActionIDs.h) and the action names
 # Kodi's ActionTranslator accepts in Action(<name>,<window>).  Numeric
@@ -341,11 +342,12 @@ class NextTrack:
         itself from Window(Home).Property(NextTrack.*) values.
         """
         skin_dir = xbmcvfs.translatePath('special://skin/')
-        for res_dir in ('1080i', '1080p', '720p'):
-            override = os.path.join(skin_dir, res_dir, 'script-nexttrack-nexttrack.xml')
-            if os.path.exists(override):
-                return True
-        return False
+        if skin_dir not in _SKIN_SUPPORT:
+            _SKIN_SUPPORT[skin_dir] = any(
+                os.path.exists(os.path.join(skin_dir, res_dir, 'script-nexttrack-nexttrack.xml'))
+                for res_dir in ('xml', '1080i', '1080p', '720p', '720i')
+            )
+        return _SKIN_SUPPORT[skin_dir]
 
     @staticmethod
     def _current_dialog_id():

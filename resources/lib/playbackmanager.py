@@ -8,13 +8,14 @@ from player import get_player
 from playitem import PlayItem
 from state import State
 from nexttrack import NextTrack
-from utils import calculate_progress_steps, event, log as ulog
+from utils import calculate_progress_steps, event, get_setting_bool, log as ulog
 
 # Outcomes of a Next Track popup (see PlaybackManager.launch_popup)
 POPUP_PLAYED = 'played'    # countdown finished and the next item was started
 POPUP_DONE = 'done'        # countdown finished (or nothing to do); Kodi advances itself
 POPUP_ABORTED = 'aborted'  # user sought out of the trigger zone; re-arm for this track
 POPUP_CLOSED = 'closed'    # playback moved on (file, playlist position or track changed)
+POPUP_DISMISSED = 'dismissed'  # disabled or duration changed; no re-arm for this track
 POPUP_STOPPED = 'stopped'  # player was not running when the popup started
 
 
@@ -28,8 +29,8 @@ class PlaybackManager:
         self.state = State()
         self.player = get_player()
 
-    def log(self, msg, level=2):
-        ulog(msg, name=self.__class__.__name__, level=level)
+    def log(self, msg, level=2, *args):  # pylint: disable=keyword-arg-before-vararg
+        ulog(msg, *args, name=self.__class__.__name__, level=level)
 
     def launch_next_track(self):
         """Run the Next Track popup for the current track and return its result."""
@@ -40,7 +41,9 @@ class PlaybackManager:
         self.log('next track found', 2)
         result = self.launch_popup(track, source)
         play_next = result == POPUP_PLAYED
-        self.state.playing_next = play_next
+        # The playback callback can consume the handoff before launch_popup returns.
+        if not play_next:
+            self.state.playing_next = False
 
         if result == POPUP_ABORTED:
             # User sought back out of the trigger zone: keep the queued item and
@@ -85,10 +88,15 @@ class PlaybackManager:
             self.log('playlist source: overlay only, letting Kodi auto-advance', 2)
             return POPUP_DONE
 
+        if get_setting_bool('disableNextTrack'):
+            self.state.track = False
+            return POPUP_DISMISSED
+
         self.log('playing next track', 2)
         if self.state.current_track_id is not None:
             event(message='NEXTTRACKPLAYEDSIGNAL', data={'trackid': self.state.current_track_id}, encoding='base64')
 
+        self.state.playing_next = True
         if self.api.has_addon_data():
             self.api.play_addon_item()
         elif self.state.queued:
@@ -130,11 +138,15 @@ class PlaybackManager:
         monitor = Monitor()
 
         while self.player.isPlaying() and (total_time - play_time > 1):
+            if get_setting_bool('disableNextTrack'):
+                self.state.track = False
+                return POPUP_DISMISSED
             if monitor.abortRequested():
                 # Service restart (add-on update) or Kodi exit: clear the
                 # overlay now, Kodi kills a service that does not exit in time
                 self.log('closing overlay because Kodi requested an abort', 2)
                 return POPUP_CLOSED
+            previous_play_time = play_time
             try:
                 play_time = self.player.getTime()
                 total_time = self.player.getTotalTime()
@@ -146,12 +158,14 @@ class PlaybackManager:
 
             remaining = total_time - play_time
             # User rewound out of the notification zone: hide overlay so we don't show "130 sec until next track"
-            if remaining > notification_threshold:
+            if (remaining > notification_threshold
+                    and (play_time < previous_play_time or total_time <= initial_total_time)):
                 self.log('closing overlay because playback left the notification zone', 2)
                 return POPUP_ABORTED
-            if abs(total_time - initial_total_time) > initial_total_time * 0.1:
+            if (remaining > notification_threshold
+                    or abs(total_time - initial_total_time) > initial_total_time * 0.1):
                 self.log('closing overlay because track duration changed', 2)
-                return POPUP_ABORTED
+                return POPUP_DISMISSED
             runtime = track.get('runtime') or track.get('duration')
             if self.state.pause or getCondVisibility('Player.Paused'):
                 # Nothing moves while paused: check twice a second only.

@@ -334,6 +334,66 @@ class PlaybackManagerTests(unittest.TestCase):
         self.assertEqual(player.playnext_calls, 0)
         self.assertGreaterEqual(self.widgets.instances[-1].close_calls, 1)
 
+    def test_duration_growth_closes_once_without_rearm(self):
+        state = FakeState()
+        api = FakeApi()
+        player = FakePlayer(times=[90, 91], totals=[100, 120], playing=[True])
+        manager = make_manager(self.playbackmanager, api, player, state)
+        result = manager.launch_popup({"trackid": 2}, source="library")
+        self.assertEqual(result, "dismissed")
+        self.assertEqual(player.playnext_calls, 0)
+        self.assertEqual(self.widgets.instances[-1].close_calls, 1)
+
+    def test_small_duration_growth_outside_zone_also_does_not_rearm(self):
+        state = FakeState()
+        api = FakeApi()
+        player = FakePlayer(times=[85, 86], totals=[100, 105], playing=[True])
+        manager = make_manager(self.playbackmanager, api, player, state)
+        self.assertEqual(manager.launch_popup({"trackid": 2}), "dismissed")
+
+    def test_rewind_with_duration_growth_still_rearms(self):
+        state = FakeState()
+        player = FakePlayer(times=[90, 70], totals=[100, 120], playing=[True])
+        manager = make_manager(self.playbackmanager, FakeApi(), player, state)
+        self.assertEqual(manager.launch_popup({"trackid": 2}), "aborted")
+
+    def test_disable_during_popup_cancels_owned_queue_without_playnext(self):
+        from unittest.mock import patch
+        state = FakeState()
+        api = FakeApi(has_addon_data=True)
+        player = FakePlayer(times=[90, 99], totals=[100], playing=[True, False])
+        manager = make_manager(self.playbackmanager, api, player, state,
+                               FakePlayItem({"trackid": 2}, "addon"))
+        with patch.object(self.playbackmanager, 'get_setting_bool',
+                          return_value=True):
+            result = manager.launch_next_track()
+        self.assertEqual(result, "dismissed")
+        self.assertFalse(state.track)
+        self.assertFalse(state.queued)
+        self.assertEqual(api.dequeue_calls, 1)
+        self.assertEqual(api.reset_calls, 1)
+        self.assertEqual(api.play_addon_calls, 0)
+        self.assertEqual(player.playnext_calls, 0)
+
+    def test_new_file_callback_consumes_handoff_before_launch_returns(self):
+        from unittest.mock import patch
+        player_module = importlib.import_module("player")
+        state = importlib.import_module("state").State()
+        state.track = True
+        player = player_module.NextTrackPlayer()
+        player.isPlayingAudio = lambda: True
+        player.api.reset_queue = lambda: None
+        manager = make_manager(self.playbackmanager, FakeApi(has_addon_data=True),
+                               player, state, FakePlayItem({"trackid": 2}, "addon"))
+        state.track = True
+        manager.show_popup_and_wait = lambda *args: "done"
+        manager.api.play_addon_item = player._check_music
+        with patch.object(self.playbackmanager, 'get_setting_bool',
+                          return_value=False):
+            self.assertEqual(manager.launch_next_track(), "played")
+        self.assertFalse(state.playing_next)
+        self.assertEqual(manager.api.reset_calls, 1)
+
     def test_player_file_change_during_countdown_aborts_stale_playnext(self):
         state = FakeState()
         api = FakeApi(has_addon_data=False, notification_time=15, queue_result=True)
@@ -658,6 +718,9 @@ class MonitorResilienceTests(unittest.TestCase):
             def isExternalPlayer(self):
                 return False
 
+            def isPlayingAudio(self):
+                return False
+
             def get_last_file(self):
                 return self.last_file
 
@@ -691,6 +754,49 @@ class MonitorResilienceTests(unittest.TestCase):
         service.api = Api()
         service.playback_manager = Manager()
         return service
+
+    def test_audio_cd_reaches_next_track_popup(self):
+        service = self._service_in_trigger_zone("done")
+        service.player.playing_file = "cdda://local/01.cdda"
+        service._check_playback()
+        self.assertEqual(service.playback_manager.calls, 1)
+
+    def test_audio_iso_is_not_treated_as_video_disc(self):
+        service = self._service_in_trigger_zone("done")
+        service.player.playing_file = "sacd.iso"
+        service.player.isPlayingAudio = lambda: True
+        service._check_playback()
+        self.assertEqual(service.playback_manager.calls, 1)
+
+    def test_video_discs_remain_excluded(self):
+        for filename in ("dvd://1", "bluray://1", "udf://disc/file", "iso9660://disc/file",
+                         "disc.iso", "disc.bdmv", "disc.ifo"):
+            with self.subTest(filename=filename):
+                service = self._service_in_trigger_zone("done")
+                service.player.playing_file = filename
+                service._check_playback()
+                self.assertEqual(service.playback_manager.calls, 0)
+                self.assertFalse(service.player.tracking)
+
+    def test_disable_setting_stops_tracking_and_clears_overlay(self):
+        from unittest.mock import patch
+        utils = importlib.import_module("utils")
+        utils.set_property("NextTrack.IsVisible", "true")
+        service = self._service_in_trigger_zone("done")
+        with patch.object(self.monitor, 'get_setting_bool', return_value=True):
+            service._check_playback()
+            service._check_playback()
+        self.assertFalse(service.player.tracking)
+        self.assertEqual(service.playback_manager.calls, 0)
+        self.assertEqual(utils.get_property("NextTrack.IsVisible"), "")
+
+    def test_duration_dismissal_does_not_rearm_same_file(self):
+        service = self._service_in_trigger_zone("dismissed")
+        service._check_playback()
+        service._check_playback()
+        self.assertFalse(service.player.tracking)
+        self.assertEqual(service.playback_manager.calls, 1)
+        self.assertEqual(service.player.last_file, "song.mp3")
 
     def test_aborted_popup_rearms_tracking_for_same_file(self):
         service = self._service_in_trigger_zone(
@@ -900,6 +1006,31 @@ class NextTrackDialogTests(unittest.TestCase):
             else:
                 sys.modules[module_name] = original
         sys.path[:] = self._original_path
+
+    def test_skin_support_in_each_layout_is_cached_per_skin(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        with TemporaryDirectory() as temporary:
+            for layout in ("xml", "720i", "1080i", "1080p", "720p"):
+                with self.subTest(layout=layout):
+                    skin = Path(temporary) / layout
+                    override = skin / layout / 'script-nexttrack-nexttrack.xml'
+                    override.parent.mkdir(parents=True)
+                    override.write_text('<window/>')
+                    with patch.object(self.nexttrack.xbmcvfs, 'translatePath', return_value=str(skin)), \
+                            patch.object(self.nexttrack.os.path, 'exists', wraps=self.nexttrack.os.path.exists) as exists:
+                        self.assertTrue(self.nexttrack.NextTrack._skin_has_nexttrack_support())
+                        probes = exists.call_count
+                        override.unlink()
+                        self.assertTrue(self.nexttrack.NextTrack._skin_has_nexttrack_support())
+                        self.assertEqual(exists.call_count, probes)
+            empty = Path(temporary) / 'empty'
+            with patch.object(self.nexttrack.xbmcvfs, 'translatePath', return_value=str(empty)), \
+                    patch.object(self.nexttrack.os.path, 'exists', wraps=self.nexttrack.os.path.exists) as exists:
+                self.assertFalse(self.nexttrack.NextTrack._skin_has_nexttrack_support())
+                probes = exists.call_count
+                self.assertFalse(self.nexttrack.NextTrack._skin_has_nexttrack_support())
+                self.assertEqual(exists.call_count, probes)
 
     def test_action_ids_match_kodi_action_names(self):
         expected = {

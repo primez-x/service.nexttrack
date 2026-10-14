@@ -29,8 +29,8 @@ class NextTrackMonitor(Monitor):
         self.playback_manager = PlaybackManager()
         Monitor.__init__(self)
 
-    def log(self, msg, level=1):
-        ulog(msg, name=self.__class__.__name__, level=level)
+    def log(self, msg, level=1, *args):  # pylint: disable=keyword-arg-before-vararg
+        ulog(msg, *args, name=self.__class__.__name__, level=level)
 
     _poll_delay = 1
 
@@ -53,7 +53,7 @@ class NextTrackMonitor(Monitor):
             except Exception:  # pylint: disable=broad-except
                 # Never let an unexpected error kill the service: log it,
                 # stop tracking the current playback and keep monitoring.
-                self.log('Unexpected error in service loop:\n%s' % format_exc(), 0)
+                self.log('Unexpected error in service loop:\n%s', 0, format_exc())
                 self._reset_after_error()
 
         self.log('Service stopped', 0)
@@ -67,11 +67,16 @@ class NextTrackMonitor(Monitor):
             try:
                 cleanup()
             except Exception:  # pylint: disable=broad-except
-                self.log('Cleanup after error failed:\n%s' % format_exc(), 0)
+                self.log('Cleanup after error failed:\n%s', 0, format_exc())
 
     def _check_playback(self):  # pylint: disable=too-many-branches,too-many-return-statements
         """Check the current playback and launch Next Track when due."""
         if not self.player.is_tracking():
+            return
+
+        if get_setting_bool('disableNextTrack'):
+            self.player.disable_tracking()
+            clear_properties()
             return
 
         if bool(get_property('PseudoTVRunning') == 'True'):
@@ -92,10 +97,11 @@ class NextTrackMonitor(Monitor):
             return
 
         if (current_file.startswith((
-                'bluray://', 'dvd://', 'udf://', 'iso9660://', 'cdda://'))
+                'bluray://', 'dvd://', 'udf://', 'iso9660://'))
                 or current_file.endswith((
-                    '.bdmv', '.iso', '.ifo'))):
-            self.log('Next Track tracking stopped, Blu-ray/DVD/CD playing', 2)
+                    '.bdmv', '.ifo'))
+                or (current_file.endswith('.iso') and not self.player.isPlayingAudio())):
+            self.log('Next Track tracking stopped, Blu-ray/DVD playing', 2)
             self.player.disable_tracking()
             return
 
@@ -132,7 +138,7 @@ class NextTrackMonitor(Monitor):
             return
 
         self.player.set_last_file(current_file)
-        self.log('Show notification as track (length %d secs) ends in %d secs' % (total_time, notification_time), 2)
+        self.log('Show notification as track (length %d secs) ends in %d secs', 2, total_time, notification_time)
         result = self.playback_manager.launch_next_track()
         if result == POPUP_ABORTED or (
                 result == POPUP_CLOSED and self._is_playing_file(current_file)):
@@ -165,7 +171,7 @@ class NextTrackMonitor(Monitor):
 
         decoded_data, encoding = decode_json(data)
         if decoded_data is None:
-            self.log('Received data from sender %s is not JSON' % sender, 2)
+            self.log('Received data from sender %s is not JSON', 2, sender)
             return
 
         decoded_data.update(id='%s_play_action' % sender.replace('.SIGNAL', ''))

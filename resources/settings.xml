@@ -23,4 +23,7 @@
             action="RunScript(service.nexttrack,test_window)"
         />
     </category>
+    <category label="30700"> <!-- Expert -->
+        <setting label="30703" type="bool" id="disableNextTrack" default="false"/>
+    </category>
 </settings>

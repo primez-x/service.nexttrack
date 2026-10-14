@@ -9,12 +9,8 @@ class State:
 
     def __init__(self):
         self.__dict__ = self._shared_state
-        self.current_track_id = None
-        self.last_file = None
-        self.track = False
-        self.pause = False
-        self.queued = False
-        self.playing_next = False
+        if not self._shared_state:
+            self.reset()
 
     def reset(self):
         """Reset all state (call when playback stops/ends/errors)."""

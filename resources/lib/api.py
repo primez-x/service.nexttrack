@@ -24,8 +24,8 @@ class Api:
         self.data = {}
         self.encoding = 'base64'
 
-    def log(self, msg, level=2):
-        ulog(msg, name=self.__class__.__name__, level=level)
+    def log(self, msg, level=2, *args):  # pylint: disable=keyword-arg-before-vararg
+        ulog(msg, *args, name=self.__class__.__name__, level=level)
 
     def has_addon_data(self):
         return self.data
@@ -280,7 +280,7 @@ class Api:
             self.log('Playing the next item directly', 2)
             jsonrpc(method='Player.Open', params={'item': {'file': self.data.get('play_url')}})
         else:
-            self.log('Sending %s data to add-on to play' % self.encoding, 2)
+            self.log('Sending %s data to add-on to play', 2, self.encoding)
             event(message=self.data.get('id'), data=self.data.get('play_info'), sender='nexttrackprovider', encoding=self.encoding)
 
     def handle_addon_lookup_of_next_track(self):
@@ -302,7 +302,7 @@ class Api:
         try:
             return int(value)
         except (TypeError, ValueError):
-            self.log('Ignoring invalid %s from provider' % key, 1)
+            self.log('Ignoring invalid %s from provider', 1, key)
             return None
 
     def notification_time(self, total_time=None):

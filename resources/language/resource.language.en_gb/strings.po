@@ -95,6 +95,10 @@ msgctxt "#30705"
 msgid "Log level"
 msgstr ""
 
+msgctxt "#30703"
+msgid "Disable Next Track"
+msgstr ""
+
 msgctxt "#30800"
 msgid "Developer"
 msgstr ""

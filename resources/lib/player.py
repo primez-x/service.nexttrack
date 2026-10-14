@@ -44,6 +44,8 @@ class NextTrackPlayer(Player):
         self.state.pause = False
         if not self.isPlayingAudio():
             return
+        # The new stream consumes the handoff. The final track must clean up.
+        self.state.playing_next = False
         self.state.track = True
         self.reset_queue()
 

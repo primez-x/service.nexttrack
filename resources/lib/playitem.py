@@ -18,8 +18,8 @@ class PlayItem:
         self.player = get_player()
         self.state = State()
 
-    def log(self, msg, level=2):
-        ulog(msg, name=self.__class__.__name__, level=level)
+    def log(self, msg, level=2, *args):  # pylint: disable=keyword-arg-before-vararg
+        ulog(msg, *args, name=self.__class__.__name__, level=level)
 
     def get_playlist_position(self):
         """Playlist position Kodi plays next, or None when it plays nothing next."""
