@@ -1,135 +1,85 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!--
-    Standalone Next Track overlay — replicates the Arctic Fuse 3 Furniture_NextTrack
-    circular widget design using bundled images from service.nexttrack's own media folder.
+    Standalone Next Track overlay — the shared top-right next-item card: square album
+    art at the right edge, and beside it three right-aligned lines (countdown header,
+    title, artist • album), mirroring Arctic Fuse 3's Object_NextItem layout.
     Shown as a non-blocking, non-interactive overlay on skins without a native Next Track overlay.
-    Position: lower-right corner (right:80, bottom:140), matching AF3 Furniture layout.
+    Position: top-right corner (right:80, top:60).
 -->
 <window type="dialog">
     <onload>Dialog.Close(fullscreeninfo,true)</onload>
     <controls>
         <control type="group">
-            <!-- Fade in on open -->
+            <right>80</right>
+            <top>60</top>
+            <width>870</width>
+            <height>230</height>
+            <!-- Slide in from the right on show -->
             <animation type="WindowOpen" reversible="false">
-                <effect type="fade" start="0" end="100" time="500" />
+                <effect type="fade" start="0" end="100" time="300" />
+                <effect type="slide" start="48,0" end="0,0" tween="back" easing="out" time="400" />
             </animation>
             <!-- Fade out on close -->
             <animation type="WindowClose" reversible="false">
-                <effect type="fade" start="100" end="0" time="300" />
+                <effect type="fade" start="100" end="0" time="200" />
+                <effect type="slide" start="0,0" end="48,0" tween="cubic" easing="in" time="220" />
             </animation>
 
-            <!-- Bottom-right gradient backdrop (same image as AF3, bundled in addon media) -->
+            <!-- Square album art at the right edge -->
             <control type="image">
                 <right>0</right>
-                <bottom>0</bottom>
-                <texture
-                    colordiffuse="CC000000"
-                    flipy="true"
-                >background/combined_overlay.png</texture>
-                <aspectratio>stretch</aspectratio>
+                <top>0</top>
+                <width>230</width>
+                <height>230</height>
+                <aspectratio>scale</aspectratio>
+                <texture background="true">$INFO[Window.Property(thumb)]</texture>
+                <visible>!String.IsEmpty(Window.Property(thumb))</visible>
             </control>
 
-            <!-- Widget card: 400x120, lower-right corner (matches AF3 Furniture position) -->
-            <control type="group">
-                <right>80</right>
-                <bottom>140</bottom>
-                <width>400</width>
-                <height>200</height>
-                <!-- Slide in from below on show -->
-                <animation type="WindowOpen" reversible="false">
-                    <effect
-                        type="slide"
-                        start="0,20"
-                        end="0,0"
-                        tween="back"
-                        easing="out"
-                        time="400"
-                    />
-                </animation>
+            <!-- Text lines, right-aligned to the left of the art -->
+            <control type="grouplist">
+                <right>230</right>
+                <top>0</top>
+                <width>640</width>
+                <height>230</height>
+                <orientation>vertical</orientation>
+                <itemgap>0</itemgap>
+                <aligny>center</aligny>
 
-                <!-- Circular progress ring + thumbnail (120x120, vertically centered) -->
-                <control type="group">
-                    <centerleft>58</centerleft>
-                    <centertop>50%</centertop>
-                    <width>180</width>
-                    <height>180</height>
-
-                    <!-- Progress ring: maps Window.Property(progress) 0-100 → p0.png-p100.png -->
-                    <control type="image">
-                        <width>180</width>
-                        <height>180</height>
-                        <texture
-                            colordiffuse="FFFFFFFF"
-                        >$INFO[Window.Property(progress),progress/circle/p,.png]</texture>
-                        <aspectratio
-                            align="center"
-                            aligny="center"
-                        >keep</aspectratio>
-                    </control>
-
-                    <!-- Circular thumbnail — thumb preferred -->
-                    <control type="image">
-                        <centerleft>50%</centerleft>
-                        <centertop>50%</centertop>
-                        <width>90</width>
-                        <height>90</height>
-                        <aspectratio scalediffuse="true">keep</aspectratio>
-                        <texture
-                            diffuse="diffuse/circle/circle_120.png"
-                        >$INFO[Window.Property(thumb)]</texture>
-                        <visible
-                        >!String.IsEmpty(Window.Property(thumb))</visible>
-                    </control>
-
-                    <!-- Landscape fallback when no thumb -->
-                    <control type="image">
-                        <centerleft>50%</centerleft>
-                        <centertop>50%</centertop>
-                        <width>90</width>
-                        <height>90</height>
-                        <aspectratio scalediffuse="true">keep</aspectratio>
-                        <texture
-                            diffuse="diffuse/circle/circle_120.png"
-                        >$INFO[Window.Property(landscape)]</texture>
-                        <visible
-                        >String.IsEmpty(Window.Property(thumb)) + !String.IsEmpty(Window.Property(landscape))</visible>
-                    </control>
+                <!-- "Up next in 12s" — small, dimmer -->
+                <control type="label">
+                    <left>0</left>
+                    <width>600</width>
+                    <height>28</height>
+                    <font>font12</font>
+                    <textcolor>7fededed</textcolor>
+                    <shadowcolor>99000000</shadowcolor>
+                    <align>right</align>
+                    <label>$ADDON[service.nexttrack 30050]$INFO[Window.Property(remaining), in ,s]</label>
                 </control>
 
-                <!-- Text labels: to the right of the circle -->
-                <control type="group">
-                    <left>120</left>
-                    <right>14</right>
-                    <centertop>50%</centertop>
-                    <height>80</height>
+                <!-- Track title -->
+                <control type="label">
+                    <left>0</left>
+                    <width>600</width>
+                    <height>40</height>
+                    <font>font13</font>
+                    <textcolor>e7ededed</textcolor>
+                    <shadowcolor>99000000</shadowcolor>
+                    <align>right</align>
+                    <label>$INFO[Window.Property(title)]</label>
+                </control>
 
-                    <!-- "Next track in 12s" — small, dimmer -->
-                    <control type="label">
-                        <top>4</top>
-                        <height>26</height>
-                        <font>font12</font>
-                        <textcolor>7fededed</textcolor>
-                        <label
-                        >$ADDON[service.nexttrack 30008] $INFO[Window.Property(remaining),in ,s]</label>
-                    </control>
-
-                    <!-- Track title -->
-                    <control type="label">
-                        <top>28</top>
-                        <height>26</height>
-                        <font>font13</font>
-                        <textcolor>e7ededed</textcolor>
-                        <label>$INFO[Window.Property(title)]</label>
-                    </control>
-
-                    <!-- Artist name -->
-                    <control type="label">
-                        <top>54</top>
-                        <height>24</height>
-                        <font>font12</font>
-                        <textcolor>7fededed</textcolor>
-                        <label>$INFO[Window.Property(artist)]</label>
-                    </control>
+                <!-- Artist • album -->
+                <control type="label">
+                    <left>0</left>
+                    <width>600</width>
+                    <height>40</height>
+                    <font>font12</font>
+                    <textcolor>b3ededed</textcolor>
+                    <shadowcolor>99000000</shadowcolor>
+                    <align>right</align>
+                    <label>$INFO[Window.Property(artist)]$INFO[Window.Property(album), [COLOR=4dededed]•[/COLOR] ,]</label>
                 </control>
             </control>
         </control>

@@ -65,6 +65,10 @@ msgctxt "#30049"
 msgid "Next track"
 msgstr ""
 
+msgctxt "#30050"
+msgid "Up next"
+msgstr ""
+
 ### SETTINGS
 msgctxt "#30600"
 msgid "Settings"
